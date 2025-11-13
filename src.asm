@@ -183,6 +183,7 @@ section .data
 		mode:	db "I"
 		db 32, 32 ; spacing
 		notes:	db "                         "
+		notesLen	equ $-notes
 		db 32, 32 ; spacing
 		filled: db "00/81"
 	toolbarLen	equ $-toolbar
@@ -284,6 +285,7 @@ section .data
 	clear:		db ESC, "[2J", ESC, "[3J", ESC, "[H"
 	clearLen	equ $-clear
 	filledCount:		db 0
+	spaces:		times 32 db 32
 section .bss
 	curr_x:		resb 1
 	curr_y:		resb 1
@@ -798,6 +800,7 @@ update_toolbar:
 	mov	byte [filled+1], dl
 .notes:
 	; Check notes
+
 	mov	r8, savedNotes
 	xor	rax, rax
 	mov	al, byte [curr_y]
@@ -811,15 +814,19 @@ update_toolbar:
 	add	r8, rax
 	mov	r9w, word [r8]
 	mov	rax, notes
+	; Clear notes
+	mov	rcx, notesLen
+	mov	rsi, spaces
+	mov	rdi, notes
+	rep movsb
 	test	r9w, 1
 	jz	.no_one
 	mov	byte [rax], '1'
 	inc	rax
-	jmp	.one
-.no_one:
+	
 	mov	byte [rax], ' '
-.one:
 	add	rax, 2
+.no_one:
 	shr	r9, 1
 	test	r9b, 1
 	jz	.no_two
