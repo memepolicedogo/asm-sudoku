@@ -128,15 +128,15 @@
 %endmacro
 section .data
 	initialState:
-		i_r0:	db 0,0,0,  0,0,0,  0,0,0
-		i_r1:	db 0,0,0,  0,0,0,  0,0,0
-		i_r2:	db 0,0,0,  0,0,0,  0,0,0
-		i_r3:	db 0,0,0,  0,0,0,  0,0,0
-		i_r4:	db 0,0,0,  0,0,0,  0,0,0
-		i_r5:	db 0,0,0,  0,0,0,  0,0,0
-		i_r6:	db 0,0,0,  0,0,0,  0,0,0
-		i_r7:	db 0,0,0,  0,0,0,  0,0,0
-		i_r8:	db 0,0,0,  0,0,0,  0,0,0
+		i_r0:	db 4,0,0,  0,7,0,  1,0,6
+		i_r1:	db 0,0,0,  0,0,0,  4,0,0
+		i_r2:	db 0,7,5,  0,1,0,  0,0,3
+		i_r3:	db 0,0,9,  0,0,0,  0,4,0
+		i_r4:	db 7,8,0,  3,0,0,  0,0,0
+		i_r5:	db 0,0,0,  0,0,0,  7,5,0
+		i_r6:	db 0,5,0,  6,0,0,  0,0,0
+		i_r7:	db 3,0,4,  0,0,9,  0,0,0
+		i_r8:	db 9,0,6,  0,4,7,  0,0,0
 	currentState:
 		c_r0:	db 0,0,0,  0,0,0,  0,0,0
 		c_r1:	db 0,0,0,  0,0,0,  0,0,0
@@ -603,6 +603,7 @@ move_left:
 	up
 	printCode lineEnd
 	mov	byte [curr_x], 8
+	ret
 .move:
 	left
 	ret
@@ -702,9 +703,13 @@ end_err:
 	ret
 global win_check
 win_check:
-	; TODO
 	cmp	byte [filledCount], '8'
 	jne	.no
+	cmp	byte [filledCount+1], 1
+	jne	.no
+	; Actually check
+	mov	rax, currentState
+
 .no:
 	mov	rax, 0
 	ret
