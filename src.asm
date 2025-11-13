@@ -148,15 +148,15 @@ section .data
 		c_r7:	db 0,0,0,  0,0,0,  0,0,0
 		c_r8:	db 0,0,0,  0,0,0,  0,0,0
 	savedNotes:
-		n_r0:	db 0,0,0,  0,0,0,  0,0,0
-		n_r1:	db 0,0,0,  0,0,0,  0,0,0
-		n_r2:	db 0,0,0,  0,0,0,  0,0,0
-		n_r3:	db 0,0,0,  0,0,0,  0,0,0
-		n_r4:	db 0,0,0,  0,0,0,  0,0,0
-		n_r5:	db 0,0,0,  0,0,0,  0,0,0
-		n_r6:	db 0,0,0,  0,0,0,  0,0,0
-		n_r7:	db 0,0,0,  0,0,0,  0,0,0
-		n_r8:	db 0,0,0,  0,0,0,  0,0,0
+		n_r0:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r1:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r2:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r3:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r4:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r5:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r6:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r7:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r8:	dw 0,0,0,  0,0,0,  0,0,0
 	board:
 		db SUDOKU_TOP, LINE_END
 		db SUDOKU_MID, LINE_END
@@ -180,7 +180,7 @@ section .data
 	boardSize	equ $-board
 	toolbar:
 		db 32, 32 ; spacing
-		mode:	db "N"
+		mode:	db "I"
 		db 32, 32 ; spacing
 		notes:	db "                         "
 		db 32, 32 ; spacing
@@ -205,6 +205,12 @@ section .data
 			db DEL
 	replaceWith:	db 0
 	replaceLen	equ $-replaceCode
+	wrapDownCode:
+		db ESC, "[16B"
+	wrapDownLen	equ $-wrapDownCode
+	wrapUpCode:
+		db ESC, "[16A"
+	wrapUpLen	equ $-wrapUpCode
 	endCode:
 		db ESC, "[18;35H"
 	endLen		equ $-endCode
@@ -253,9 +259,12 @@ section .data
 	jumpX:	db 0,0
 		db "H"
 	jumpLen		equ $-jumpCode
+	defmsg	insertMode, "Entered insert mode"
+	defmsg	notesMode, "Entered notes mode"
 	defmsg	winner, "You won! Press Enter to close."
 	deferr	term_size, "Terminal is too small"
 	deferr	bad_input, "An error occured while reading input"
+	deferr	init_overwrite, "Can't write over inital values"
 
 	og_termio:
 		 c_iflag:	dd 0
@@ -383,6 +392,7 @@ _start:
 	mov	byte [curr_y], 0
 	mov	byte [targ_y], 0
 main_loop:
+	call	update_toolbar
 	; Read input
 	mov	qword [input_buff], 0
 	mov	rax, 0
@@ -392,6 +402,7 @@ main_loop:
 	syscall
 	cmp	rax, 0
 	jl	bad_input_error
+	call	clear_msg
 	; Possible inputs:
 	; Number: 1-9
 	; Command: ...
@@ -406,41 +417,99 @@ main_loop:
 	cmp	r8b, 57
 	jg	.check_char
 	; Is num
+	; Check mode
+	cmp	byte [mode], 'I'
+	je	.insert
+	cmp	byte [mode], 'N'
+	je	.note
+	jmp	main_loop
+.note:
+	; Get value
+	sub	r8b, 49
+	mov	r9, 1
+.notes_loop:
+	cmp	r8b, 0
+	je	.notes_end
+	shl	r9, 1
+	dec	r8b
+	jmp	.notes_loop
+.notes_end:
+	;r9w stores the notes
+	; Get current notes
+	mov	r8, savedNotes
+	xor	rax, rax
+	mov	al, byte [curr_y]
+	mov	rbx, 9
+	mul	rbx
+	shl	rax, 1
+	add	r8, rax
+	xor	rax, rax
+	mov	al, byte [curr_x]
+	shl	rax, 1
+	add	r8, rax
+	; e.g. if 1 and 2 are noted already and user inputs 3:
+	; 000000000
+	xor	word [r8], r9w
+	jmp	main_loop
+
+
+.insert:
 	mov	byte [replaceWith], r8b
 	; Check if square has starter number
-	mov	rax, initialState
-	xor	rcx, rcx
-	mov	cl, byte [curr_y]
-	mul	rcx, 9
-	add	rax, rcx
-	xor	rcx, rcx
-	mov	cl, byte [curr_x]
-	add	rax, rcx
-	cmp	byte [rax], 0
-	jne	init_overwrite_error
+	mov	r8, initialState
+	xor	rax, rax
+	mov	al, byte [curr_y]
+	mov	rbx, 9
+	mul	rbx
+	add	r8, rax
+	xor	rax, rax
+	mov	al, byte [curr_x]
+	add	r8, rax
+	cmp	byte [r8], 0
+	je	.valid_write
+	call	init_overwrite_error
+	jmp	main_loop
+.valid_write:
+
 	; Write number 
 	call	write_num
 	; Update stored state
-	mov	rax, currentState
-	xor	rcx, rcx
-	mov	cl, byte [curr_y]
-	mul	rcx, 9
-	add	rax, rcx
-	xor	rcx, rcx
-	mov	cl, byte [curr_x]
-	add	rax, rcx
-	cmp	byte [rax], 0
+	mov	r8, initialState
+	xor	rax, rax
+	mov	al, byte [curr_y]
+	mov	rbx, 9
+	mul	rbx
+	add	r8, rax
+	xor	rax, rax
+	mov	al, byte [curr_x]
+	add	r8, rax
+	cmp	byte [r8], 0
 	jne	.skip_count
 	inc	byte [filledCount]
 .skip_count:
 	mov	r9b, byte [replaceWith]
 	sub	r9b, 48
-	mov	byte [rax], r9b
+	mov	byte [r8], r9b
 	call	win_check
 	cmp	rax, 1
 	je	win
 	jmp	main_loop
 .check_char:
+	cmp	byte [input_buff], 'q'
+	je	exit
+	cmp	byte [input_buff], 'n'
+	je	.switch_note
+	cmp	byte [input_buff], 'i'
+	je	.switch_input
+.switch_note:
+	; Enter note mode
+	mov	byte [mode], 'N'
+	call	mode_change
+	jmp	main_loop
+.switch_input:
+	; enter insert mode
+	mov	byte [mode], 'I'
+	call	mode_change
 	jmp	main_loop
 .check_arrow:
 	cmp	byte [input_buff+1], '['
@@ -487,7 +556,7 @@ exit:
 	mov	rsi, TCSETSW2
 	mov	rdx, og_termio
 	syscall
-;	call clear_screen
+	call clear_screen
 early_exit:
 	; Exit
 	mov	rax, 60
@@ -497,9 +566,26 @@ early_exit:
 ; Functions
 global move_up
 move_up:
+	mov	al, byte [curr_y]
+	cmp	al, 0
+	je	.down
+	up
+	ret
+.down:
+	printCode wrapDown
+	mov	byte [curr_y], 8
 	ret
 global move_down
 move_down:
+	mov	al, byte [curr_y]
+	cmp	al, 8
+	je	.up
+	down
+	ret
+.up:
+	printCode wrapUp
+	mov	byte [curr_y], 0
+	ret
 	ret
 global move_left
 move_left:
@@ -551,9 +637,24 @@ draw_toolbar:
 	syscall
 	restore
 	ret
+global mode_change
+mode_change:
+	mov	al, byte [mode]
+	cmp	al, 'I'
+	je	.insert
+	cmp	al, 'N'
+	je	.notes
+.insert:
+	printmsg insertMode
+	restore
+	ret
+.notes:
+	printmsg notesMode
+	restore
+	ret
+
 global clear_msg
 clear_msg:
-	save
 	; Get down to message level
 	call prep_msg
 	; Remove the text
@@ -567,6 +668,7 @@ clear_msg:
 	ret
 global prep_msg
 prep_msg:
+	save
 	mov	rax, 1
 	mov	rdi, 1
 	mov	rsi, prepMsgCode
@@ -599,6 +701,9 @@ end_err:
 global win_check
 win_check:
 	; TODO
+	cmp	byte [filledCount], '8'
+	jne	.no
+.no:
 	mov	rax, 0
 	ret
 global remove_num
@@ -698,76 +803,80 @@ update_toolbar:
 	mov	al, byte [curr_y]
 	mov	rbx, 9
 	mul	rbx
+	shl	rax, 1
 	add	r8, rax
 	xor	rax, rax
 	add	al, byte [curr_x]
+	shl	rax, 1
 	add	r8, rax
-	mov	r9b, byte [r8]
+	mov	r9w, word [r8]
 	mov	rax, notes
-	test	r9b, 1
+	test	r9w, 1
 	jz	.no_one
 	mov	byte [rax], '1'
 	inc	rax
-	mov	byte [rax], ','
-	add	rax, 2
+	jmp	.one
 .no_one:
-	shl	r9, 1
+	mov	byte [rax], ' '
+.one:
+	add	rax, 2
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_two
 	mov	byte [rax], '2'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_two:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_three
 	mov	byte [rax], '3'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_three:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_four
 	mov	byte [rax], '4'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_four:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_five
 	mov	byte [rax], '5'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_five:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_six
 	mov	byte [rax], '6'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_six:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_seven
 	mov	byte [rax], '7'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_seven:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_eight
 	mov	byte [rax], '8'
 	inc	rax
-	mov	byte [rax], ','
+	
 	add	rax, 2
 .no_eight:
-	shl	r9, 1
+	shr	r9, 1
 	test	r9b, 1
 	jz	.no_nine
 	mov	byte [rax], '9'
@@ -777,7 +886,7 @@ update_toolbar:
 ; Errors
 global init_overwrite_error
 init_overwrite_error:
-	printerr bad_input
+	printerr init_overwrite
 	ret
 global bad_input_error
 bad_input_error:
