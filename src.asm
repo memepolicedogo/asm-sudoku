@@ -30,6 +30,36 @@
 %define LINE_END		0x1B, "[1E"
 
 ; Macros
+%macro printCode 1
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, %1Code
+	mov	rdx, %1Len
+	syscall
+%endmacro
+%macro restore 0
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, restoreCursorCode
+	mov	rdx, restoreCursorLen
+	syscall
+%endmacro
+%macro save 0
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, saveCursorCode
+	mov	rdx, saveCursorLen
+	syscall
+%endmacro
+%macro end 0
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, endCode
+	mov	rdx, endLen
+	syscall
+	mov	byte [curr_x], 8
+	mov	byte [curr_y], 8
+%endmacro
 %macro home 0
 	mov	rax, 1
 	mov	rdi, 1
@@ -45,6 +75,7 @@
 	mov	rsi, downCode
 	mov	rdx, downLen
 	syscall
+	inc	byte [curr_y]
 %endmacro
 %macro up 0
 	mov	rax, 1
@@ -52,6 +83,7 @@
 	mov	rsi, upCode
 	mov	rdx, upLen
 	syscall
+	dec	byte [curr_y]
 %endmacro
 %macro left 0
 	mov	rax, 1
@@ -59,6 +91,7 @@
 	mov	rsi, leftCode
 	mov	rdx, leftLen
 	syscall
+	dec	byte [curr_x]
 %endmacro
 %macro right 0
 	mov	rax, 1
@@ -66,6 +99,7 @@
 	mov	rsi, rightCode
 	mov	rdx, rightLen
 	syscall
+	inc	byte [curr_x]
 %endmacro
 %macro defmsg	2
 	%1Msg:	db %2, 0
@@ -94,15 +128,15 @@
 %endmacro
 section .data
 	initialState:
-		i_r0:	db 0,0,0,  0,0,0,  0,0,0
-		i_r1:	db 0,0,0,  0,0,0,  0,0,0
-		i_r2:	db 0,0,0,  0,0,0,  0,0,0
-		i_r3:	db 0,0,0,  0,0,0,  0,0,0
-		i_r4:	db 0,0,0,  0,0,0,  0,0,0
-		i_r5:	db 0,0,0,  0,0,0,  0,0,0
-		i_r6:	db 0,0,0,  0,0,0,  0,0,0
-		i_r7:	db 0,0,0,  0,0,0,  0,0,0
-		i_r8:	db 0,0,0,  0,0,0,  0,0,0
+		i_r0:	db 1,2,3,  4,5,6,  7,8,9
+		i_r1:	db 2,0,0,  0,0,0,  0,0,0
+		i_r2:	db 3,0,0,  0,0,0,  0,0,0
+		i_r3:	db 4,0,0,  0,0,0,  0,0,0
+		i_r4:	db 5,0,0,  0,0,0,  0,0,0
+		i_r5:	db 6,0,0,  0,0,0,  0,0,0
+		i_r6:	db 7,0,0,  0,0,0,  0,0,0
+		i_r7:	db 8,0,0,  0,0,0,  0,0,0
+		i_r8:	db 9,0,0,  0,0,0,  0,0,0
 	currentState:
 		c_r0:	db 0,0,0,  0,0,0,  0,0,0
 		c_r1:	db 0,0,0,  0,0,0,  0,0,0
@@ -145,6 +179,7 @@ section .data
 		db SUDOKU_BOTTOM, LINE_END
 	boardSize	equ $-board
 	toolbar:
+		db 32, 32 ; spacing
 		mode:	db "N"
 		db 32, 32 ; spacing
 		notes:	db "                         "
@@ -152,13 +187,13 @@ section .data
 		filled: db "00/81"
 	toolbarLen	equ $-toolbar
 	prepToolbarCode:
-		db	ESC, "[19;0H"
+		db	ESC, "[20;0H"
 	prepToolbarLen	equ $-prepToolbarCode
 	clearMsgCode:
 		db	ESC, "[2K"
 	clearMsgLen	equ $-clearMsgCode
 	prepMsgCode:
-		db	ESC, "[20;0H"
+		db	ESC, "[21;0H"
 	prepMsgLen	equ $-prepMsgCode
 	errStartCode:
 		db	ESC, "[31m", "Error: "
@@ -170,11 +205,12 @@ section .data
 			db DEL
 	replaceWith:	db 0
 	replaceLen	equ $-replaceCode
+	endCode:
+		db ESC, "[18;35H"
+	endLen		equ $-endCode
 	homeCode:
 		; back to origin of the board
-		db ESC, "[H"	; return to 0,0
-		db ESC, "[1B"	; Down 1 row
-		db ESC, "[2C"	; Right 2 col
+		db ESC, "[2;3H"	; return to 0,0
 	homeLen		equ $-homeCode
 	downCode:
 		; Down to next square
@@ -184,38 +220,56 @@ section .data
 		; up to next square
 		db ESC, "[2A"	; up 2 rows
 	upLen		equ $-upCode
+	postWriteCode:
+		db ESC, "[1D"	; left 1 col
+	postWriteLen		equ $-postWriteCode
 	leftCode:
 		; left to next square
-		db ESC, "[3D"	; left 3 cols
+		db ESC, "[4D"	; left 3 cols
 	leftLen		equ $-leftCode
 	rightCode:
 		; right to next square
-		db ESC, "[3C"	; right 3 cols
+		db ESC, "[4C"	; right 3 cols
 	rightLen	equ $-rightCode
-	test:
-		db ESC, "[H"	; return to 0,0
-		db ESC, "[1B"	; Down 1 row
-		db ESC, "[2C"	; Right 2 col
-		db DEL		; Delete char
-		db "1"		; Replace with 1
-	ts	equ $-test
+	lineEndCode:
+		db ESC, "[35G"
+	lineEndLen	equ $-lineEndCode
+	lineStartCode:
+		db ESC, "[3G"
+	lineStartLen	equ $-lineStartCode
+	saveCursorCode:
+		db ESC, "7"
+	saveCursorLen	equ $-saveCursorCode
+	restoreCursorCode:
+		db ESC, "8"
+	restoreCursorLen	equ $-restoreCursorCode
+	enterBoldCode:
+		db ESC, "[1m"
+	enterBoldLen	equ $-enterBoldCode
+	jumpCode:
+		db ESC, "["
+	jumpY:	db 0,0
+		db ";"
+	jumpX:	db 0,0
+		db "H"
+	jumpLen		equ $-jumpCode
 	defmsg	winner, "You won! Press Enter to close."
 	deferr	term_size, "Terminal is too small"
 	deferr	bad_input, "An error occured while reading input"
 
 	og_termio:
-		 c_iflag:	dw 0
-		 c_oflag:	dw 0
-		 c_cflag:	dw 0
-		 c_lflag:	dw 0
+		 c_iflag:	dd 0
+		 c_oflag:	dd 0
+		 c_cflag:	dd 0
+		 c_lflag:	dd 0
 		 c_line:	db 0
 		 c_cc:		dq 0, 0, 0
 	termio_len	equ $-og_termio
 	new_termio:
-		new_c_iflag:	dw 0
-		new_c_oflag:	dw 0
-		new_c_cflag:	dw 0
-		new_c_lflag:	dw 0
+		new_c_iflag:	dd 0
+		new_c_oflag:	dd 0
+		new_c_cflag:	dd 0
+		new_c_lflag:	dd 0
 		new_c_line:	db 0
 		new_c_cc:	dq 0, 0, 0
 	clear:		db ESC, "[2J", ESC, "[3J", ESC, "[H"
@@ -268,19 +322,19 @@ _start:
 	jl	term_size_error
 	mov	word [expected_col], ax
 	; Set options
-	mov	ax, word [new_c_iflag]
-	and	ax, 1515  ; (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON)
-	mov	word [new_c_iflag], ax
-	mov	ax, word [new_c_oflag]
-	and	ax, 1	  ; OPOST
-	mov	word [new_c_oflag], ax
-	mov	ax, word [new_c_lflag]
-	and	ax, 32843 ; (ECHO | ECHONL | ICANON | ISIG | IEXTEN)
-	mov	word [new_c_lflag], ax
-	mov	ax, word [new_c_cflag]
-	and	ax, 304	  ; (CSIZE | PARENB)
-	or	ax, 48	  ; CS8
-	mov	word [new_c_cflag], ax
+	mov	eax, dword [new_c_iflag]
+	and	eax, 4294965780; (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON)
+	mov	dword [new_c_iflag], eax
+	mov	eax, dword [new_c_oflag]
+	and	eax, 4294967294	  ; OPOST
+	mov	dword [new_c_oflag], eax
+	mov	eax, dword [new_c_lflag]
+	and	eax, 4294934452	; ~(ICANON | ISIG | IEXTEN)
+	mov	dword [new_c_lflag], eax
+	mov	eax, dword [new_c_cflag]
+	and	eax, 4294966991	; ~(CSIZE | PARENB)
+	or	eax, 48	  ; CS8
+	mov	dword [new_c_cflag], eax
 	; Enter raw mode
 	mov	rax, 16
 	mov	rdi, 0
@@ -299,6 +353,8 @@ _start:
 	; Go to home
 	home
 	; Populate board
+	; Bold inital inputs
+	printCode enterBold
 	mov	r8, initialState
 .populate_loop:
 	cmp	r8, initialState+80
@@ -307,14 +363,19 @@ _start:
 	inc	r8
 	cmp	r9b, 0
 	jne	.populate
+	call	move_right
 	jmp	.populate_loop
 .populate:
 	inc	byte [filledCount]
-	add	r9b, 49
+	add	r9b, 48
 	mov	byte [replaceWith], r9b
 	call	write_num
+	call	move_right
 	jmp	.populate_loop
 .end_populate:
+	; No longer bold
+	printCode resetGraph
+	home
 	call	update_toolbar
 	; Set values
 	mov	byte [curr_x], 0
@@ -323,6 +384,7 @@ _start:
 	mov	byte [targ_y], 0
 main_loop:
 	; Read input
+	mov	qword [input_buff], 0
 	mov	rax, 0
 	mov	rdi, 0
 	mov	rsi, input_buff
@@ -334,9 +396,8 @@ main_loop:
 	; Number: 1-9
 	; Command: ...
 	; Move: arrow key/wasd
-	; Input more than 1 byte must be an arrow or invalid
-	cmp	rax, 1
-	jg	.check_arrow
+	cmp	byte [input_buff], ESC
+	je	.check_arrow
 	; Get char
 	mov	r8b, byte [input_buff]
 	; Check if num
@@ -380,9 +441,33 @@ main_loop:
 	je	win
 	jmp	main_loop
 .check_char:
-
+	jmp	main_loop
 .check_arrow:
-
+	cmp	byte [input_buff+1], '['
+	jne	main_loop
+	xor	rax, rax
+	mov	al, byte [input_buff+2]
+	cmp	al, 'A'
+	je	.up
+	cmp	al, 'B'
+	je	.down
+	cmp	al, 'C'
+	je	.right
+	cmp	al, 'D'
+	je	.left
+	jmp	main_loop
+.up:
+	call	move_up
+	jmp	main_loop
+.down:
+	call	move_down
+	jmp	main_loop
+.right:
+	call	move_right
+	jmp	main_loop
+.left:
+	call	move_left
+	jmp	main_loop
 win:
 	printmsg winner
 .loop:
@@ -402,7 +487,7 @@ exit:
 	mov	rsi, TCSETSW2
 	mov	rdx, og_termio
 	syscall
-	call clear_screen
+;	call clear_screen
 early_exit:
 	; Exit
 	mov	rax, 60
@@ -410,12 +495,181 @@ early_exit:
 	syscall
 
 ; Functions
+global move_up
+move_up:
+	ret
+global move_down
+move_down:
+	ret
+global move_left
+move_left:
+	mov	al, byte [curr_x]
+	cmp	al, 0
+	jg	.move
+	mov	al, byte [curr_y]
+	cmp	al, 0
+	jg	.up
+	end
+	ret
+.up:
+	up
+	printCode lineEnd
+	mov	byte [curr_x], 8
+.move:
+	left
+	ret
+global move_right
+move_right:
+	mov	al, byte [curr_x]
+	cmp	al, 8
+	jl	.move
+	mov	al, byte [curr_y]
+	cmp	al, 8
+	jl	.down
+	home
+	ret
+.down:
+	down
+	printCode lineStart
+	mov	byte [curr_x], 0
+	ret
+.move:
+	right
+	ret
 global draw_toolbar
 draw_toolbar:
+	save
 	mov	rax, 1
 	mov	rdi, 1
 	mov	rsi, prepToolbarCode
 	mov	rdx, prepToolbarLen
+	syscall
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, toolbar
+	mov	rdx, toolbarLen
+	syscall
+	restore
+	ret
+global clear_msg
+clear_msg:
+	save
+	; Get down to message level
+	call prep_msg
+	; Remove the text
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, clearMsgCode
+	mov	rdx, clearMsgLen
+	syscall
+	; reset cursor position
+	restore
+	ret
+global prep_msg
+prep_msg:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, prepMsgCode
+	mov	rdx, prepMsgLen
+	syscall
+	ret
+global prep_err
+prep_err:
+	save
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, prepMsgCode
+	mov	rdx, prepMsgLen
+	syscall
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, errStartCode
+	mov	rdx, errStartLen
+	syscall
+	ret
+global end_err
+end_err:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, resetGraphCode
+	mov	rdx, resetGraphLen
+	syscall
+	restore
+	ret
+global win_check
+win_check:
+	; TODO
+	mov	rax, 0
+	ret
+global remove_num
+remove_num:
+	mov byte [replaceWith], 32
+global write_num
+write_num:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, replaceCode
+	mov	rdx, replaceLen
+	syscall
+	; Move cursor back over
+	printCode postWrite
+	ret
+global jump_to
+jump_to:
+	; Jump to a given square
+	; board starts at 0,0 goes to 8,8
+	; Start from home
+	home
+	xor	rax, rax
+	mov	al, byte [targ_y]
+	cmp	al, 8
+	jg	.bad_arg
+	shr	rax, 1
+	inc	rax
+	mov	rbx, 10
+	xor	rdx, rdx
+	div	rbx
+	add	rax, 48
+	mov	byte [jumpY], al
+	add	rdx, 48
+	mov	byte [jumpY+1], dl
+	mov	al, byte [targ_x]
+	cmp	al, 8
+	jg	.bad_arg
+	shr	rax, 2
+	add	rax, 3
+	mov	rbx, 10
+	xor	rdx, rdx
+	div	rbx
+	add	rax, 48
+	mov	byte [jumpX], al
+	add	rdx, 48
+	mov	byte [jumpX+1], dl
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, jumpCode
+	mov	rdx, jumpLen
+	syscall
+	; Cleanup
+	mov	cl, byte [targ_y]
+	mov	byte [curr_y], cl
+	mov	byte [targ_y], 0
+	mov	cl, byte [targ_y]
+	mov	byte [curr_x], cl
+	mov	byte [targ_x], 0
+	ret
+.bad_arg:
+	; Return home
+	home
+	mov	rax, -1
+	ret
+	
+global clear_screen
+clear_screen:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, clear
+	mov	rdx, clearLen
 	syscall
 	ret
 global update_toolbar
@@ -430,6 +684,7 @@ update_toolbar:
 	mov	byte [filled+1], al
 	jmp	.notes
 .conv_tens:
+	xor	rdx, rdx
 	mov	rbx, 10
 	div	rbx
 	add	rax, 48
@@ -518,120 +773,6 @@ update_toolbar:
 	mov	byte [rax], '9'
 .no_nine:
 	call draw_toolbar
-	ret
-global return_cursor
-return_cursor:
-	mov	al, byte [curr_x]
-	mov	byte [targ_x], al
-	mov	al, byte [curr_y]
-	mov	byte [targ_y], al
-	call	jump_to
-	ret
-global clear_msg
-clear_msg:
-	; Get down to message level
-	call prep_msg
-	; Remove the text
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, clearMsgCode
-	mov	rdx, clearMsgLen
-	syscall
-	; reset cursor position
-	call	return_cursor
-	ret
-global prep_msg
-prep_msg:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, prepMsgCode
-	mov	rdx, prepMsgLen
-	syscall
-	ret
-global prep_err
-prep_err:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, prepMsgCode
-	mov	rdx, prepMsgLen
-	syscall
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, errStartCode
-	mov	rdx, errStartLen
-	syscall
-	ret
-global end_err
-end_err:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, resetGraphCode
-	mov	rdx, resetGraphLen
-	syscall
-	ret
-global win_check
-win_check:
-	; TODO
-	mov	rax, 0
-	ret
-global remove_num
-remove_num:
-	mov byte [replaceWith], 32
-global write_num
-write_num:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, replaceCode
-	mov	rdx, replaceLen
-	syscall
-	ret
-global jump_to
-jump_to:
-	; Jump to a given square
-	; board starts at 0,0 goes to 8,8
-	; Start from home
-	home
-	mov	cl, byte [targ_y]
-	cmp	cl, 8
-	jg	.bad_arg
-.y_loop:
-	cmp	cl, 0
-	jle	.y_exit
-	down
-	dec	cl
-	jmp	.y_loop
-.y_exit:
-	mov	cl, byte [targ_x]
-	cmp	cl, 8
-	jg	.bad_arg
-.x_loop:
-	cmp	cl, 0
-	jle	.x_exit
-	right
-	dec	cl
-	jmp	.x_loop
-.x_exit:
-	; Cleanup
-	mov	cl, byte [targ_y]
-	mov	byte [curr_y], cl
-	mov	byte [targ_y], 0
-	mov	cl, byte [targ_y]
-	mov	byte [curr_x], cl
-	mov	byte [targ_x], 0
-	
-.bad_arg:
-	; Return home
-	home
-	mov	rax, -1
-	ret
-	
-global clear_screen
-clear_screen:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, clear
-	mov	rdx, clearLen
-	syscall
 	ret
 ; Errors
 global init_overwrite_error
