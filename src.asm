@@ -1,8 +1,9 @@
 ; TODO
-; Highlight same num - Highlight row/col for empty
+; Highlight same num (DONE)- Highlight row/col for empty (NOT DONE)
 ; Active error checking
 ; Random board generation
 ; Save files (also would allow dynamic board loading)
+
 ;-----Definitions-----;
 ; Call constants
 %define TCGETS2		0x802C542A
@@ -10,6 +11,7 @@
 %define TIOCGWINSZ	0x5413
 ; Value constants
 %define INBUFFSIZE	16
+%define FBUFFSIZE	512
 %define COL_MIN		100
 %define ROW_MIN		50
 ; Char constants
@@ -355,6 +357,7 @@ section .bss
 		; x/y pixel
 		resb 4
 	input_buff	resb INBUFFSIZE
+	f_buff		resb FBUFFSIZE
 section .text
 ;INIT{
 global _start
@@ -633,6 +636,114 @@ early_exit:
 	syscall
 
 ; Functions
+global load_save
+; Where RAX is an open file descriptor
+load_save:
+	push	rax
+	mov	rax, 0
+	pop	rdi
+	push	rdi
+	mov	rsi, f_buff
+	mov	rdx, FBUFFSIZE
+	syscall
+	cmp	rax, 0
+	jl	.read_err
+	cmp	rax, FBUFFSIZE
+	jge	.size_err
+	; get the end of the jit
+	add	rax, f_buff
+	push	rax
+	xor	r8,r8
+	; get the first char
+	mov	r8b, byte [rsi]
+	cmp	r8b, '<'
+	jne	.bad_file_err
+	inc	rsi
+	mov	r8b, byte [rsi]
+	; First section should be version
+	cmp	r8b, 'V'
+	jne	.bad_file_err
+	; Check version number
+	inc	rsi
+	mov	r8w, word [rsi]
+	cmp	r8w, '1>' ; We only have version 1 currently
+	je	.load_ver_1
+	jmp	.bad_version_err
+.load_ver_1:
+	add	rsi, 2 ; gets passed version section
+	mov	r8b, byte [rsi]
+	cmp	r8b, 10 ; is newline
+	jne	.v1_new_sec
+	inc	rsi
+.v1_new_sec:
+	; get start of next section
+	pop	rax
+	cmp	rsi, rax	; are we at the end
+	jge	.loaded
+	push	rax
+	mov	r8w, word [rsi]
+	add	rsi, 2 ; get to start of data
+	cmp	r8w, '<I'
+	je	.v1_i
+	cmp	r8w, '<B'
+	je	.v1_b
+	cmp	r8w, '<N'
+	je	.v1_n
+	jmp	.bad_file_err
+.v1_i:
+	mov	rcx, 81
+	mov	rdi, initialState
+	rep	movsb
+	cmp	byte [rsi], '>'
+	jne	.bad_file_err
+	inc	rsi
+	cmp	byte [rsi], 10
+	jne	.v1_new_sec
+	inc	rsi
+	jmp	.v1_new_sec
+.v1_b:
+	mov	rcx, 81
+	mov	rdi, currentState
+	rep	movsb
+	cmp	byte [rsi], '>'
+	jne	.bad_file_err
+	inc	rsi
+	cmp	byte [rsi], 10
+	jne	.v1_new_sec
+	inc	rsi
+	jmp	.v1_new_sec
+.v1_n:
+	mov	rcx, 81
+	mov	rdi, storedNotes
+	rep	movsw
+	cmp	byte [rsi], '>'
+	jne	.bad_file_err
+	inc	rsi
+	cmp	byte [rsi], 10
+	jne	.v1_new_sec
+	inc	rsi
+	jmp	.v1_new_sec
+	jmp	.v1_new_sec
+
+
+.loaded:
+	ret
+.size_err:
+	pop	rdx
+	mov	rax, -90
+.read_err:
+	pop	rdx
+	ret
+.bad_file_err:
+	pop	rdx
+	pop	rdx
+	mov	rax, -22
+	ret
+.bad_version_err:
+	pop	rdx
+	pop	rdx
+	mov	rax, -1
+	ret
 global highlight
 highlight:
 	; Save cursor

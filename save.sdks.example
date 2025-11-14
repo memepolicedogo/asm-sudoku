@@ -1,0 +1,5 @@
+; Format example, not a real save file
+<V{version number}>
+<I{initial board}>
+<B{current board}>
+<N{notes}>
