@@ -147,6 +147,43 @@ section .data
 		c_r6:	db 0,0,0,  0,0,0,  0,0,0
 		c_r7:	db 0,0,0,  0,0,0,  0,0,0
 		c_r8:	db 0,0,0,  0,0,0,  0,0,0
+	sqr_0_0:	
+		dq c_r0, c_r0+1, c_r0+2
+		dq c_r1, c_r1+1, c_r1+2
+		dq c_r2, c_r2+1, c_r2+2
+	sqr_1_0:	
+		dq c_r0+3, c_r0+4, c_r0+5
+		dq c_r1+3, c_r1+4, c_r1+5
+		dq c_r2+3, c_r2+4, c_r2+5
+	sqr_2_0:	
+		dq c_r0+6, c_r0+7, c_r0+8
+		dq c_r1+6, c_r1+7, c_r1+8
+		dq c_r2+6, c_r2+7, c_r2+8
+	sqr_0_1:	
+		dq c_r3, c_r3+1, c_r3+2
+		dq c_r4, c_r4+1, c_r4+2
+		dq c_r5, c_r5+1, c_r5+2
+	sqr_1_1:	
+		dq c_r3+3, c_r3+4, c_r3+5
+		dq c_r4+3, c_r4+4, c_r4+5
+		dq c_r5+3, c_r5+4, c_r5+5
+	sqr_2_1:	
+		dq c_r3+6, c_r3+7, c_r3+8
+		dq c_r4+6, c_r4+7, c_r4+8
+		dq c_r5+6, c_r5+7, c_r5+8
+	sqr_0_2:	
+		dq c_r6, c_r6+1, c_r6+2
+		dq c_r7, c_r7+1, c_r7+2
+		dq c_r8, c_r8+1, c_r8+2
+	sqr_1_2:	
+		dq c_r6+3, c_r6+4, c_r6+5
+		dq c_r7+3, c_r7+4, c_r7+5
+		dq c_r8+3, c_r8+4, c_r8+5
+	sqr_2_2:	
+		dq c_r6+6, c_r6+7, c_r6+8
+		dq c_r7+6, c_r7+7, c_r7+8
+		dq c_r8+6, c_r8+7, c_r8+8
+	sqr_end:
 	savedNotes:
 		n_r0:	dw 0,0,0,  0,0,0,  0,0,0
 		n_r1:	dw 0,0,0,  0,0,0,  0,0,0
@@ -731,12 +768,13 @@ win_check:
 	cmp	r9w, 511
 	jne	.no
 	add	rax, 9
-	cmp	rax, savedNotes
+	cmp	rax, sqr_0_0
 	je	.checked_rows
 	mov	rcx, 0
 	jmp	.row_loop
 .checked_rows:
 	mov	rax, currentState
+	mov	rcx, 0
 .col_loop:
 	mov	r8b, [rax+rcx]
 	sub	r8b, 49
@@ -760,6 +798,33 @@ win_check:
 	mov	rcx, 0
 	jmp	.col_loop
 .checked_cols:
+
+	mov	rax, sqr_0_0
+	mov	rcx, 0
+.sqr_loop:
+	mov	r11, qword [rax+rcx]
+	mov	r8b, [r11]
+	sub	r8b, 49
+	mov	r10w, 1
+.sqr_shift_loop:
+	cmp	r8b, 0
+	je	.sqr_shift_end
+	shr	r10w, 1
+	dec	r8b
+	jmp	.sqr_shift_loop
+.sqr_shift_end:
+	xor	r9w, r10w
+	add	rcx, 1
+	cmp	rcx, 9
+	jne	.sqr_loop
+	cmp	r9w, 511
+	jne	.no
+	add	rax, 1
+	cmp	rax, sqr_end
+	jge	.checked_sqrs
+	mov	rcx, 0
+	jmp	.sqr_loop
+.checked_sqrs:
 	; TODO Squares
 	mov	rax, currentState
 .no:
