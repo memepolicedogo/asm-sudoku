@@ -299,6 +299,7 @@ section .data
 	jumpLen		equ $-jumpCode
 	defmsg	insertMode, "Entered insert mode"
 	defmsg	notesMode, "Entered notes mode"
+	defmsg	no, "Not quite!"
 	defmsg	winner, "You won! Press Enter to close."
 	deferr	term_size, "Terminal is too small"
 	deferr	bad_input, "An error occured while reading input"
@@ -793,7 +794,7 @@ win_check:
 	cmp	r9w, 511
 	jne	.no
 	add	rax, 1
-	cmp	rax, c_r_1
+	cmp	rax, c_r1
 	jge	.checked_cols
 	mov	rcx, 0
 	jmp	.col_loop
