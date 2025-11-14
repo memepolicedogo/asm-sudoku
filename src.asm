@@ -709,7 +709,59 @@ win_check:
 	jne	.no
 	; Actually check
 	mov	rax, currentState
-
+	; r9w holds the state
+	mov	r9w, 0
+	; rcx counter
+	mov	rcx, 0
+.row_loop:
+	mov	r8b, [rax+rcx]
+	sub	r8b, 49
+	mov	r10w, 1
+.row_shift_loop:
+	cmp	r8b, 0
+	je	.row_shift_end
+	shr	r10w, 1
+	dec	r8b
+	jmp	.row_shift_loop
+.row_shift_end:
+	xor	r9w, r10w
+	inc	rcx
+	cmp	rcx, 9
+	jl	.row_loop
+	cmp	r9w, 511
+	jne	.no
+	add	rax, 9
+	cmp	rax, savedNotes
+	je	.checked_rows
+	mov	rcx, 0
+	jmp	.row_loop
+.checked_rows:
+	mov	rax, currentState
+.col_loop:
+	mov	r8b, [rax+rcx]
+	sub	r8b, 49
+	mov	r10w, 1
+.col_shift_loop:
+	cmp	r8b, 0
+	je	.col_shift_end
+	shr	r10w, 1
+	dec	r8b
+	jmp	.col_shift_loop
+.col_shift_end:
+	xor	r9w, r10w
+	add	rcx, 9
+	cmp	rcx, 81
+	jl	.col_loop
+	cmp	r9w, 511
+	jne	.no
+	add	rax, 1
+	cmp	rax, c_r_1
+	jge	.checked_cols
+	mov	rcx, 0
+	jmp	.col_loop
+.checked_cols:
+	; TODO Squares
+	mov	rax, currentState
 .no:
 	mov	rax, 0
 	ret

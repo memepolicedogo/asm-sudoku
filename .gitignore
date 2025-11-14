@@ -1,0 +1,6 @@
+!src.asm
+!build.sh
+sudoku
+*.o
+*.c
+a.out
