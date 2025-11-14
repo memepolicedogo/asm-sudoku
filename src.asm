@@ -541,17 +541,10 @@ main_loop:
 	call	remove_num
 	jmp	main_loop
 .insert_cont:
-	; Write number 
-	call	write_num
 	; Update stored state
 	mov	r8, currentState
 	xor	rax, rax
-	mov	al, byte [curr_y]
-	mov	rbx, 9
-	mul	rbx
-	add	r8, rax
-	xor	rax, rax
-	mov	al, byte [curr_x]
+	mov	al, byte [index]
 	add	r8, rax
 	cmp	byte [r8], 0
 	jne	.skip_count
@@ -560,6 +553,8 @@ main_loop:
 	mov	r9b, byte [replaceWith]
 	sub	r9b, 48
 	mov	byte [r8], r9b
+	; Write number 
+	call	write_num
 	call	win_check
 	cmp	rax, 1
 	je	win
@@ -714,7 +709,7 @@ load_save:
 	jmp	.v1_new_sec
 .v1_n:
 	mov	rcx, 81
-	mov	rdi, storedNotes
+	mov	rdi, savedNotes
 	rep	movsw
 	cmp	byte [rsi], '>'
 	jne	.bad_file_err
@@ -1222,6 +1217,12 @@ win_check:
 	mov	rax, 1
 	ret
 .no:
+	cmp	byte [filledCount], 81
+	je	.print_msg
+	mov	rax, 0
+	ret
+.print_msg:
+	printmsg no
 	mov	rax, 0
 	ret
 ;}
