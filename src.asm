@@ -1,7 +1,8 @@
 ; TODO
 ; Highlight same num - Highlight row/col for empty
 ; Active error checking
-; ?
+; Random board generation
+; Save files (also would allow dynamic board loading)
 ;-----Definitions-----;
 ; Call constants
 %define TCGETS2		0x802C542A
@@ -33,7 +34,7 @@
 %define SUDOKU_BOTTOM		"└───┴───┴───┸───┴───┴───┸───┴───┴───┘"
 %define LINE_END		0x1B, "[1E"
 
-; Macros
+; MACROS{
 %macro printCode 1
 	mov	rax, 1
 	mov	rdi, 1
@@ -72,6 +73,7 @@
 	syscall
 	mov	byte [curr_x], 0
 	mov	byte [curr_y], 0
+	mov	byte [index], 0
 %endmacro
 %macro down 0
 	mov	rax, 1
@@ -130,9 +132,11 @@
 	syscall
 	call	end_err
 %endmacro
+;}
 section .data
+	;BOARD{
 	initialState:
-		i_r0:	db 4,3,2,  9,7,5,  1,8,6
+		i_r0:	db 0,3,2,  9,7,5,  1,8,6
 		i_r1:	db 1,9,8,  2,6,3,  4,7,5
 		i_r2:	db 6,7,5,  4,1,8,  2,9,3
 		i_r3:	db 5,6,9,  7,2,1,  3,4,8
@@ -221,6 +225,7 @@ section .data
 		db SUDOKU_MID, LINE_END
 		db SUDOKU_BOTTOM, LINE_END
 	boardSize	equ $-board
+	;}
 	toolbar:
 		db 32, 32 ; spacing
 		mode:	db "I"
@@ -230,6 +235,10 @@ section .data
 		db 32, 32 ; spacing
 		filled: db "00/81"
 	toolbarLen	equ $-toolbar
+	;CODES{
+	highlightCode:
+		db	ESC, "[30;47m"
+	highlightLen	equ $-highlightCode
 	prepToolbarCode:
 		db	ESC, "[20;0H"
 	prepToolbarLen	equ $-prepToolbarCode
@@ -294,7 +303,7 @@ section .data
 		db ESC, "8"
 	restoreCursorLen	equ $-restoreCursorCode
 	enterBoldCode:
-		db ESC, "[1m"
+		db ESC, "[1m", ESC, "[34m"
 	enterBoldLen	equ $-enterBoldCode
 	jumpCode:
 		db ESC, "["
@@ -303,6 +312,7 @@ section .data
 	jumpX:	db 0,0
 		db "H"
 	jumpLen		equ $-jumpCode
+	;}
 	defmsg	insertMode, "Entered insert mode"
 	defmsg	notesMode, "Entered notes mode"
 	defmsg	no, "Not quite!"
@@ -310,7 +320,7 @@ section .data
 	deferr	term_size, "Terminal is too small"
 	deferr	bad_input, "An error occured while reading input"
 	deferr	init_overwrite, "Can't write over inital values"
-
+	;UTIL{
 	og_termio:
 		 c_iflag:	dd 0
 		 c_oflag:	dd 0
@@ -326,6 +336,7 @@ section .data
 		new_c_lflag:	dd 0
 		new_c_line:	db 0
 		new_c_cc:	dq 0, 0, 0
+	;}
 	clear:		db ESC, "[2J", ESC, "[3J", ESC, "[H"
 	clearLen	equ $-clear
 	filledCount:		db 0
@@ -345,6 +356,7 @@ section .bss
 		resb 4
 	input_buff	resb INBUFFSIZE
 section .text
+;INIT{
 global _start
 _start:
 	; Get current setup
@@ -438,8 +450,11 @@ _start:
 	mov	byte [targ_x], 0
 	mov	byte [curr_y], 0
 	mov	byte [targ_y], 0
+	;}
+	;MAIN{
 main_loop:
 	call	update_toolbar
+	call	highlight
 	; Read input
 	mov	qword [input_buff], 0
 	mov	rax, 0
@@ -459,7 +474,7 @@ main_loop:
 	; Get char
 	mov	r8b, byte [input_buff]
 	; Check if num
-	cmp	r8b, 49
+	cmp	r8b, 48
 	jl	bad_input_error
 	cmp	r8b, 57
 	jg	.check_char
@@ -472,7 +487,18 @@ main_loop:
 	jmp	main_loop
 .note:
 	; Get value
-	sub	r8b, 49
+	sub	r8b, 48
+	cmp	r8b, 0
+	jne	.notes_cont
+	mov	r8, savedNotes
+	xor	rax, rax
+	mov	al, byte [index]
+	shl	rax, 1
+	add	r8, rax
+	mov	word [r8], 0
+	jmp	main_loop
+.notes_cont:
+	dec	r8b
 	mov	r9, 1
 .notes_loop:
 	cmp	r8b, 0
@@ -485,13 +511,7 @@ main_loop:
 	; Get current notes
 	mov	r8, savedNotes
 	xor	rax, rax
-	mov	al, byte [curr_y]
-	mov	rbx, 9
-	mul	rbx
-	shl	rax, 1
-	add	r8, rax
-	xor	rax, rax
-	mov	al, byte [curr_x]
+	mov	al, byte [index]
 	shl	rax, 1
 	add	r8, rax
 	; e.g. if 1 and 2 are noted already and user inputs 3:
@@ -512,11 +532,16 @@ main_loop:
 	call	init_overwrite_error
 	jmp	main_loop
 .valid_write:
-
+	mov	r8b, byte [replaceWith]
+	cmp	r8b, 48
+	jne	.insert_cont
+	call	remove_num
+	jmp	main_loop
+.insert_cont:
 	; Write number 
 	call	write_num
 	; Update stored state
-	mov	r8, initialState
+	mov	r8, currentState
 	xor	rax, rax
 	mov	al, byte [curr_y]
 	mov	rbx, 9
@@ -579,6 +604,7 @@ main_loop:
 .left:
 	call	move_left
 	jmp	main_loop
+	;}
 win:
 	printmsg winner
 .loop:
@@ -607,6 +633,93 @@ early_exit:
 	syscall
 
 ; Functions
+global highlight
+highlight:
+	; Save cursor
+	save
+	; Save current x and y
+	xor	rdx, rdx
+	mov	dl, byte [curr_x]
+	push	rdx
+	mov	dl, byte [curr_y]
+	push	rdx
+	; Get current value
+	mov	rax, currentState
+	xor	rdx, rdx
+	mov	dl, byte [index]
+	push	rdx	; save current index
+	add	rax, rdx
+	xor	r8, r8
+	mov	r8b, byte [rax]
+	cmp	r8b, 0
+	je	.zero
+	; Iterate through the board and highlight matches
+	home
+.loop:
+	mov	rax, currentState
+	pop	rdi
+	push	rdi
+	cmp	dil, byte [index]
+	jne	.cont
+	jmp	.iter
+.cont:
+	xor	rdi, rdi
+	mov	dil, byte [index]
+	; value therein
+	mov	sil, [rax+rdi]
+	; is the number 0?
+	cmp	sil, 0
+	je	.iter
+	; store value
+	push	rsi
+	; is the number the same?
+	cmp	sil, r8b
+	je	.color
+	jne	.clean
+	; Clean remove any old highlighting
+.color:
+	; Write control code
+	printCode highlight
+.clean:
+	mov	rax, initialState
+	xor	rdi, rdi
+	mov	dil, byte [index]
+	mov	sil, byte [rax+rdi]
+	cmp	sil, 0
+	je	.no_bold
+	printCode enterBold
+.no_bold:
+	; Clear cell
+	call	remove_num
+	; Write back number
+	pop	rsi
+	add	sil, 48
+	mov	byte [replaceWith], sil
+	call	write_num
+	; Clear formating
+	printCode resetGraph
+.iter:
+	call	move_right
+	cmp	byte [index], 0
+	jne	.loop
+	pop	rdx
+	mov	byte [index], dl
+	pop	rdx
+	mov	byte [curr_y], dl
+	pop	rdx
+	mov	byte [curr_x], dl
+	restore
+	ret
+	; If current is 0 highlight row and col
+.zero:
+	pop	rdx	; don't need index or x/y since we aren't moving
+	pop	rdx
+	pop	rdx
+	; Clean current highlights
+	; highlight row and col
+	ret
+	; toggle with h?
+; MOVES{
 global move_up
 move_up:
 	mov	al, byte [curr_y]
@@ -680,6 +793,8 @@ move_right:
 	right
 	inc	byte [index]
 	ret
+;}
+;TOOLBAR{
 global draw_toolbar
 draw_toolbar:
 	save
@@ -694,246 +809,7 @@ draw_toolbar:
 	mov	rdx, toolbarLen
 	syscall
 	restore
-	ret
-global mode_change
-mode_change:
-	mov	al, byte [mode]
-	cmp	al, 'I'
-	je	.insert
-	cmp	al, 'N'
-	je	.notes
-.insert:
-	printmsg insertMode
-	restore
-	ret
-.notes:
-	printmsg notesMode
-	restore
-	ret
-
-global clear_msg
-clear_msg:
-	; Get down to message level
-	call prep_msg
-	; Remove the text
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, clearMsgCode
-	mov	rdx, clearMsgLen
-	syscall
-	; reset cursor position
-	restore
-	ret
-global prep_msg
-prep_msg:
-	save
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, prepMsgCode
-	mov	rdx, prepMsgLen
-	syscall
-	ret
-global prep_err
-prep_err:
-	save
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, prepMsgCode
-	mov	rdx, prepMsgLen
-	syscall
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, errStartCode
-	mov	rdx, errStartLen
-	syscall
-	ret
-global end_err
-end_err:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, resetGraphCode
-	mov	rdx, resetGraphLen
-	syscall
-	restore
-	ret
-global win_check
-win_check:
-	cmp	byte [filledCount], 81
-	jne	.no
-	; Actually check
-	mov	rax, currentState
-	; r9w holds the state
-	mov	r9w, 0
-	; rcx counter
-	mov	rcx, 0
-.row_loop:
-	xor	r8, r8
-	mov	r8b, [rax+rcx]
-	mov	r10w, 1
-	dec	r8b
-.row_shift_loop:
-	cmp	r8b, 0
-	je	.row_shift_end
-	shl	r10w, 1
-	dec	r8b
-	jmp	.row_shift_loop
-.row_shift_end:
-	xor	r9w, r10w
-	inc	rcx
-	cmp	rcx, 9
-	jl	.row_loop
-	cmp	r9w, 511
-	jne	.no
-	xor	r9, r9
-	add	rax, 9
-	cmp	rax, endState
-	je	.checked_rows
-	mov	rcx, 0
-	jmp	.row_loop
-.checked_rows:
-	mov	rax, currentState
-	mov	rcx, 0
-.col_loop:
-	xor	r8, r8
-	mov	r8b, [rax+rcx]
-	mov	r10w, 1
-	dec	r8b
-.col_shift_loop:
-	cmp	r8b, 0
-	je	.col_shift_end
-	shl	r10w, 1
-	dec	r8b
-	jmp	.col_shift_loop
-.col_shift_end:
-	xor	r9w, r10w
-	add	rcx, 9
-	cmp	rcx, 81
-	jl	.col_loop
-	cmp	r9w, 511
-	jne	.no
-	xor	r9, r9
-	add	rax, 1
-	cmp	rax, c_r1
-	jge	.checked_cols
-	mov	rcx, 0
-	jmp	.col_loop
-.checked_cols:
-
-	mov	rax, sqr_0_0
-	mov	rcx, 0
-.sqr_loop:
-	mov	r11, qword [rax+rcx]
-	mov	r8b, [r11]
-	mov	r10w, 1
-	dec	r8b
-.sqr_shift_loop:
-	cmp	r8b, 0
-	je	.sqr_shift_end
-	shl	r10w, 1
-	dec	r8b
-	jmp	.sqr_shift_loop
-.sqr_shift_end:
-	xor	r9w, r10w
-	add	rcx, 8
-	cmp	rcx, 72
-	jl	.sqr_loop
-	cmp	r9w, 511
-	jne	.no
-	xor	r9, r9
-	add	rax, rcx
-	cmp	rax, sqr_end
-	jge	.checked_sqrs
-	mov	rcx, 0
-	jmp	.sqr_loop
-.checked_sqrs:
-	; TODO Squares
-	mov	rax, 1
-	ret
-.no:
-glob_no:
-	mov	rax, 0
-	ret
-global remove_num
-remove_num:
-	mov byte [replaceWith], 32
-global write_num
-write_num:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, replaceCode
-	mov	rdx, replaceLen
-	syscall
-	; Move cursor back over
-	printCode postWrite
-	; Update stored jit
-	mov	rax, currentState
-	push	r8
-	xor	r8, r8
-	mov	r8b, byte [index]
-	add	rax, r8
-	mov	r8b, byte [replaceWith]
-	sub	r8b, 48
-	mov	byte [rax], r8b
-	pop	r8
-	ret
-global jump_to
-jump_to:
-	; Jump to a given square
-	; board starts at 0,0 goes to 8,8
-	; Start from home
-	home
-	xor	rax, rax
-	mov	al, byte [targ_y]
-	cmp	al, 8
-	jg	.bad_arg
-	shr	rax, 1
-	inc	rax
-	mov	rbx, 10
-	xor	rdx, rdx
-	div	rbx
-	add	rax, 48
-	mov	byte [jumpY], al
-	add	rdx, 48
-	mov	byte [jumpY+1], dl
-	mov	al, byte [targ_x]
-	cmp	al, 8
-	jg	.bad_arg
-	shr	rax, 2
-	add	rax, 3
-	mov	rbx, 10
-	xor	rdx, rdx
-	div	rbx
-	add	rax, 48
-	mov	byte [jumpX], al
-	add	rdx, 48
-	mov	byte [jumpX+1], dl
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, jumpCode
-	mov	rdx, jumpLen
-	syscall
-	; Cleanup
-	mov	cl, byte [targ_y]
-	mov	byte [curr_y], cl
-	mov	byte [targ_y], 0
-	mov	cl, byte [targ_y]
-	mov	byte [curr_x], cl
-	mov	byte [targ_x], 0
-	ret
-.bad_arg:
-	; Return home
-	home
-	mov	rax, -1
-	ret
-	
-global clear_screen
-clear_screen:
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, clear
-	mov	rdx, clearLen
-	syscall
-	ret
+ret
 global update_toolbar
 update_toolbar:
 	; Check completion
@@ -1045,6 +921,205 @@ update_toolbar:
 .no_nine:
 	call draw_toolbar
 	ret
+global mode_change
+mode_change:
+	mov	al, byte [mode]
+	cmp	al, 'I'
+	je	.insert
+	cmp	al, 'N'
+	je	.notes
+.insert:
+	printmsg insertMode
+	restore
+	ret
+.notes:
+	printmsg notesMode
+	restore
+	ret
+
+global clear_msg
+clear_msg:
+	; Get down to message level
+	call prep_msg
+	; Remove the text
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, clearMsgCode
+	mov	rdx, clearMsgLen
+	syscall
+	; reset cursor position
+	restore
+	ret
+global prep_msg
+prep_msg:
+	save
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, prepMsgCode
+	mov	rdx, prepMsgLen
+	syscall
+	ret
+global prep_err
+prep_err:
+	save
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, prepMsgCode
+	mov	rdx, prepMsgLen
+	syscall
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, errStartCode
+	mov	rdx, errStartLen
+	syscall
+	ret
+global end_err
+end_err:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, resetGraphCode
+	mov	rdx, resetGraphLen
+	syscall
+	restore
+	ret
+;}
+;WIN{
+global win_check
+win_check:
+	cmp	byte [filledCount], 81
+	jne	.no
+	; Actually check
+	mov	rax, currentState
+	; r9w holds the state
+	mov	r9w, 0
+	; rcx counter
+	mov	rcx, 0
+.row_loop:
+	xor	r8, r8
+	mov	r8b, [rax+rcx]
+	mov	r10w, 1
+	dec	r8b
+.row_shift_loop:
+	cmp	r8b, 0
+	je	.row_shift_end
+	shl	r10w, 1
+	dec	r8b
+	jmp	.row_shift_loop
+.row_shift_end:
+	xor	r9w, r10w
+	inc	rcx
+	cmp	rcx, 9
+	jl	.row_loop
+	cmp	r9w, 511
+	jne	.no
+	xor	r9, r9
+	add	rax, 9
+	cmp	rax, endState
+	je	.checked_rows
+	mov	rcx, 0
+	jmp	.row_loop
+.checked_rows:
+	mov	rax, currentState
+	mov	rcx, 0
+.col_loop:
+	xor	r8, r8
+	mov	r8b, [rax+rcx]
+	mov	r10w, 1
+	dec	r8b
+.col_shift_loop:
+	cmp	r8b, 0
+	je	.col_shift_end
+	shl	r10w, 1
+	dec	r8b
+	jmp	.col_shift_loop
+.col_shift_end:
+	xor	r9w, r10w
+	add	rcx, 9
+	cmp	rcx, 81
+	jl	.col_loop
+	cmp	r9w, 511
+	jne	.no
+	xor	r9, r9
+	add	rax, 1
+	cmp	rax, c_r1
+	jge	.checked_cols
+	mov	rcx, 0
+	jmp	.col_loop
+.checked_cols:
+
+	mov	rax, sqr_0_0
+	mov	rcx, 0
+.sqr_loop:
+	mov	r11, qword [rax+rcx]
+	mov	r8b, [r11]
+	mov	r10w, 1
+	dec	r8b
+.sqr_shift_loop:
+	cmp	r8b, 0
+	je	.sqr_shift_end
+	shl	r10w, 1
+	dec	r8b
+	jmp	.sqr_shift_loop
+.sqr_shift_end:
+	xor	r9w, r10w
+	add	rcx, 8
+	cmp	rcx, 72
+	jl	.sqr_loop
+	cmp	r9w, 511
+	jne	.no
+	xor	r9, r9
+	add	rax, rcx
+	cmp	rax, sqr_end
+	jge	.checked_sqrs
+	mov	rcx, 0
+	jmp	.sqr_loop
+.checked_sqrs:
+	; TODO Squares
+	mov	rax, 1
+	ret
+.no:
+	mov	rax, 0
+	ret
+;}
+;WRITE{
+global remove_num
+remove_num:
+	mov byte [replaceWith], 32
+global write_num
+write_num:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, replaceCode
+	mov	rdx, replaceLen
+	syscall
+	; Move cursor back over
+	printCode postWrite
+	; Update stored jit
+	mov	rax, currentState
+	push	r8
+	xor	r8, r8
+	mov	r8b, byte [index]
+	add	rax, r8
+	mov	r8b, byte [replaceWith]
+	cmp	r8b, 32
+	jne	.non_zero
+	mov	byte [rax], 0
+	pop	r8
+	ret
+.non_zero:
+	sub	r8b, 48
+	mov	byte [rax], r8b
+	pop	r8
+	ret
+global clear_screen
+clear_screen:
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, clear
+	mov	rdx, clearLen
+	syscall
+	ret
+;}
 ; Errors
 global init_overwrite_error
 init_overwrite_error:
