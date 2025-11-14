@@ -128,15 +128,15 @@
 %endmacro
 section .data
 	initialState:
-		i_r0:	db 4,0,0,  0,7,0,  1,0,6
-		i_r1:	db 0,0,0,  0,0,0,  4,0,0
-		i_r2:	db 0,7,5,  0,1,0,  0,0,3
-		i_r3:	db 0,0,9,  0,0,0,  0,4,0
-		i_r4:	db 7,8,0,  3,0,0,  0,0,0
-		i_r5:	db 0,0,0,  0,0,0,  7,5,0
-		i_r6:	db 0,5,0,  6,0,0,  0,0,0
-		i_r7:	db 3,0,4,  0,0,9,  0,0,0
-		i_r8:	db 9,0,6,  0,4,7,  0,0,0
+		i_r0:	db 4,3,2,  9,7,5,  1,8,6
+		i_r1:	db 1,9,8,  2,6,3,  4,7,5
+		i_r2:	db 6,7,5,  4,1,8,  2,9,3
+		i_r3:	db 5,6,9,  7,2,1,  3,4,8
+		i_r4:	db 7,8,1,  3,5,4,  6,2,9
+		i_r5:	db 2,4,3,  8,9,6,  7,5,1
+		i_r6:	db 8,5,7,  6,3,2,  9,1,4
+		i_r7:	db 3,2,4,  1,8,9,  5,6,7
+		i_r8:	db 9,1,6,  5,4,7,  8,3,0
 	currentState:
 		c_r0:	db 0,0,0,  0,0,0,  0,0,0
 		c_r1:	db 0,0,0,  0,0,0,  0,0,0
@@ -741,9 +741,7 @@ end_err:
 	ret
 global win_check
 win_check:
-	cmp	byte [filledCount], '8'
-	jne	.no
-	cmp	byte [filledCount+1], 1
+	cmp	byte [filledCount], 81
 	jne	.no
 	; Actually check
 	mov	rax, currentState
@@ -829,6 +827,7 @@ win_check:
 	; TODO Squares
 	mov	rax, currentState
 .no:
+glob_no:
 	mov	rax, 0
 	ret
 global remove_num
