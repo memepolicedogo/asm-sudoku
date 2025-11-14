@@ -1,3 +1,7 @@
+; TODO
+; Highlight same num - Highlight row/col for empty
+; Active error checking
+; ?
 ;-----Definitions-----;
 ; Call constants
 %define TCGETS2		0x802C542A
@@ -147,6 +151,8 @@ section .data
 		c_r6:	db 0,0,0,  0,0,0,  0,0,0
 		c_r7:	db 0,0,0,  0,0,0,  0,0,0
 		c_r8:	db 0,0,0,  0,0,0,  0,0,0
+	endState:
+	times 5 db 0
 	sqr_0_0:	
 		dq c_r0, c_r0+1, c_r0+2
 		dq c_r1, c_r1+1, c_r1+2
@@ -323,6 +329,7 @@ section .data
 	clear:		db ESC, "[2J", ESC, "[3J", ESC, "[H"
 	clearLen	equ $-clear
 	filledCount:		db 0
+	index:			db 0
 	spaces:		times 32 db 32
 section .bss
 	curr_x:		resb 1
@@ -498,12 +505,7 @@ main_loop:
 	; Check if square has starter number
 	mov	r8, initialState
 	xor	rax, rax
-	mov	al, byte [curr_y]
-	mov	rbx, 9
-	mul	rbx
-	add	r8, rax
-	xor	rax, rax
-	mov	al, byte [curr_x]
+	mov	al, byte [index]
 	add	r8, rax
 	cmp	byte [r8], 0
 	je	.valid_write
@@ -580,12 +582,13 @@ main_loop:
 win:
 	printmsg winner
 .loop:
-	mov	rax, 1
-	mov	rdi, 1
+	mov	qword [input_buff], 0
+	mov	rax, 0
+	mov	rdi, 0
 	mov	rsi, input_buff
-	mov	rdx, INBUFFSIZE
+	mov	rdx, 1
 	syscall
-	cmp	byte [input_buff], 10
+	cmp	byte [input_buff], 13
 	jne .loop
 exit:
 
@@ -610,10 +613,14 @@ move_up:
 	cmp	al, 0
 	je	.down
 	up
+	sub	byte [index], 9
 	ret
 .down:
 	printCode wrapDown
 	mov	byte [curr_y], 8
+	mov	byte [index], 72
+	mov	al, byte [curr_x]
+	add	byte [index], al
 	ret
 global move_down
 move_down:
@@ -621,10 +628,14 @@ move_down:
 	cmp	al, 8
 	je	.up
 	down
+	add	byte [index], 9
 	ret
 .up:
 	printCode wrapUp
 	mov	byte [curr_y], 0
+	mov	byte [index], 0
+	mov	al, byte [curr_x]
+	add	byte [index], al
 	ret
 	ret
 global move_left
@@ -636,14 +647,17 @@ move_left:
 	cmp	al, 0
 	jg	.up
 	end
+	mov	byte [index], 80
 	ret
 .up:
 	up
 	printCode lineEnd
 	mov	byte [curr_x], 8
+	dec	byte [index]
 	ret
 .move:
 	left
+	dec	byte [index]
 	ret
 global move_right
 move_right:
@@ -654,14 +668,17 @@ move_right:
 	cmp	al, 8
 	jl	.down
 	home
+	mov	byte [index], 0
 	ret
 .down:
 	down
 	printCode lineStart
 	mov	byte [curr_x], 0
+	inc	byte [index]
 	ret
 .move:
 	right
+	inc	byte [index]
 	ret
 global draw_toolbar
 draw_toolbar:
@@ -750,13 +767,14 @@ win_check:
 	; rcx counter
 	mov	rcx, 0
 .row_loop:
+	xor	r8, r8
 	mov	r8b, [rax+rcx]
-	sub	r8b, 49
 	mov	r10w, 1
+	dec	r8b
 .row_shift_loop:
 	cmp	r8b, 0
 	je	.row_shift_end
-	shr	r10w, 1
+	shl	r10w, 1
 	dec	r8b
 	jmp	.row_shift_loop
 .row_shift_end:
@@ -766,8 +784,9 @@ win_check:
 	jl	.row_loop
 	cmp	r9w, 511
 	jne	.no
+	xor	r9, r9
 	add	rax, 9
-	cmp	rax, sqr_0_0
+	cmp	rax, endState
 	je	.checked_rows
 	mov	rcx, 0
 	jmp	.row_loop
@@ -775,13 +794,14 @@ win_check:
 	mov	rax, currentState
 	mov	rcx, 0
 .col_loop:
+	xor	r8, r8
 	mov	r8b, [rax+rcx]
-	sub	r8b, 49
 	mov	r10w, 1
+	dec	r8b
 .col_shift_loop:
 	cmp	r8b, 0
 	je	.col_shift_end
-	shr	r10w, 1
+	shl	r10w, 1
 	dec	r8b
 	jmp	.col_shift_loop
 .col_shift_end:
@@ -791,6 +811,7 @@ win_check:
 	jl	.col_loop
 	cmp	r9w, 511
 	jne	.no
+	xor	r9, r9
 	add	rax, 1
 	cmp	rax, c_r1
 	jge	.checked_cols
@@ -803,29 +824,31 @@ win_check:
 .sqr_loop:
 	mov	r11, qword [rax+rcx]
 	mov	r8b, [r11]
-	sub	r8b, 49
 	mov	r10w, 1
+	dec	r8b
 .sqr_shift_loop:
 	cmp	r8b, 0
 	je	.sqr_shift_end
-	shr	r10w, 1
+	shl	r10w, 1
 	dec	r8b
 	jmp	.sqr_shift_loop
 .sqr_shift_end:
 	xor	r9w, r10w
-	add	rcx, 1
-	cmp	rcx, 9
-	jne	.sqr_loop
+	add	rcx, 8
+	cmp	rcx, 72
+	jl	.sqr_loop
 	cmp	r9w, 511
 	jne	.no
-	add	rax, 1
+	xor	r9, r9
+	add	rax, rcx
 	cmp	rax, sqr_end
 	jge	.checked_sqrs
 	mov	rcx, 0
 	jmp	.sqr_loop
 .checked_sqrs:
 	; TODO Squares
-	mov	rax, currentState
+	mov	rax, 1
+	ret
 .no:
 glob_no:
 	mov	rax, 0
@@ -842,6 +865,16 @@ write_num:
 	syscall
 	; Move cursor back over
 	printCode postWrite
+	; Update stored jit
+	mov	rax, currentState
+	push	r8
+	xor	r8, r8
+	mov	r8b, byte [index]
+	add	rax, r8
+	mov	r8b, byte [replaceWith]
+	sub	r8b, 48
+	mov	byte [rax], r8b
+	pop	r8
 	ret
 global jump_to
 jump_to:
