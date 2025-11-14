@@ -712,11 +712,44 @@ highlight:
 	ret
 	; If current is 0 highlight row and col
 .zero:
-	pop	rdx	; don't need index or x/y since we aren't moving
+	save
+	home
+.clean_loop:
+	mov	rax, currentState
+	xor	rdx, rdx
+	mov	dl, byte [index]
+	add	rax, rdx
+	mov	dl, byte [rax]
+	cmp	dl, 0
+	je	.no_clean
+	push	rdx
+	call	remove_num
 	pop	rdx
+	add	rdx, 48
+	mov	byte [replaceWith], dl
+	mov	rax, initialState
+	xor	rdx, rdx
+	mov	dl, byte [index]
+	add	rax, rdx
+	cmp	byte [rax], 0
+	je	.z_no_bold
+	printCode enterBold
+.z_no_bold:
+	call	write_num
+	printCode resetGraph
+.no_clean:
+	call	move_right
+	cmp	byte [index], 0
+	jne	.clean_loop
+	; We should have a clean board
+	; get back to the main location
+	restore
 	pop	rdx
-	; Clean current highlights
-	; highlight row and col
+	mov	byte [index], dl
+	pop	rdx
+	mov	byte [curr_y], dl
+	pop	rdx
+	mov	byte [curr_x], dl
 	ret
 	; toggle with h?
 ; MOVES{
