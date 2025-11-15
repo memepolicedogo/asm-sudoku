@@ -1,4 +1,5 @@
 ; TODO
+; lets make a new error for dis
 ; Highlight same num (DONE)- Highlight row/col for empty (NOT DONE)
 ; Active error checking
 ; Random board generation
@@ -109,11 +110,11 @@
 	syscall
 	inc	byte [curr_x]
 %endmacro
-%macro defmsg	2
+%macro defmsg	2+
 	%1Msg:	db %2, 0
 	%1Len	equ $-%1Msg
 %endmacro
-%macro deferr	2
+%macro deferr	2+
 	%1Err:	db %2, 0
 	%1Len	equ $-%1Err
 %endmacro
@@ -319,7 +320,11 @@ section .data
 	defmsg	notesMode, "Entered notes mode"
 	defmsg	no, "Not quite!"
 	defmsg	winner, "You won! Press Enter to close."
-	deferr	term_size, "Terminal is too small"
+	deferr	bad_dev, "The developer of this program did something wrong",10
+	deferr	no_open, "Failed to open the given file",10
+	deferr	no_load, "Invalid save file",10
+	deferr	bad_args, "Invalid argument(s)",10
+	deferr	term_size, "Terminal is too small",10
 	deferr	bad_input, "An error occured while reading input"
 	deferr	init_overwrite, "Can't write over inital values"
 	;UTIL{
@@ -344,6 +349,7 @@ section .data
 	filledCount:		db 0
 	index:			db 0
 	spaces:		times 32 db 32
+	in_game:	db 0
 section .bss
 	curr_x:		resb 1
 	curr_y:		resb 1
@@ -358,6 +364,8 @@ section .bss
 		resb 4
 	input_buff	resb INBUFFSIZE
 	f_buff		resb FBUFFSIZE
+	arg_c		resq 1
+	curr_opt	resb 1
 section .text
 ;INIT{
 global _start
@@ -369,7 +377,7 @@ _start:
 	mov	rdx, og_termio
 	syscall
 	cmp	rax, 0
-	jl	early_exit
+	jl	exit
 	; Copy current setup to new var
 	mov	rcx, termio_len
 	mov	rsi, og_termio
@@ -382,7 +390,7 @@ _start:
 	mov	rdx, winsize
 	syscall
 	cmp	rax, 0
-	jl	early_exit
+	jl	exit
 	; Store winsize info
 	mov	ax, [ws_row]
 	cmp	ax, ROW_MIN
@@ -392,6 +400,92 @@ _start:
 	cmp	ax, COL_MIN
 	jl	term_size_error
 	mov	word [expected_col], ax
+	; Handle args
+handle_args:
+	pop	rax
+	mov	qword [arg_c], rax
+	cmp	rax, 1
+	je	.no_args
+	pop	rax
+.clear_arg:
+	inc	rax
+	cmp	byte [rax], 0
+	jne	.clear_arg
+.arg_start:
+	dec	qword [arg_c]
+	cmp	qword [arg_c], 0
+	je	.no_args
+	inc	rax
+	cmp	byte [rax], '-'
+	je	.parse_opt
+	jne	.parse_val
+.parse_val:
+	; Check related opt
+	xor	r8, r8
+	mov	r8b, byte [curr_opt]
+	; If no related opt
+	cmp	r8b, 0
+	je	bad_args_error
+	; Load save
+	cmp	r8b, 's'
+	je	.save_file_name
+	; Implicit deny
+	call	bad_args_error
+	; Handle value accordingly
+.save_file_name:
+	; Current arg should be the name/path of/to a save file
+	; push current arg_v value to the stack since we're using rax for a syscall
+	push	rax
+	; sys_open
+	mov	rax, 2
+	pop	rdi
+	push	rdi
+	mov	rsi, 0
+	mov	rdx, 0 ; read only
+	syscall
+	cmp	rax, 0
+	jl	no_open_error
+	; rax holds a fptr for the save file, try to load it
+	call	load_save
+	; Once again if rax is negative there was an error
+	cmp	rax, 0
+	jl	no_load_error
+	; Otherwise the file was loaded successfully and we can close it 
+	; rax should have fd
+	mov	rdi, rax
+	mov	rax, 3 ; sys_close
+	syscall
+	cmp	rax, 0
+	jl	bad_dev_error
+	; restore arg_v
+	pop	rax
+	; Clear curr_opt
+	mov	byte [curr_opt], 0
+	jmp	.clear_arg
+.parse_opt:
+	inc	rax
+	cmp	byte [rax], '-'
+	jne	.one_tack
+	; Handle long-name args
+.one_tack:
+	; Handle single char args
+	xor	r8, r8
+	mov	r8b, byte [rax]
+	; cmp	r8b, '{option_char}'
+	; je	.option
+	; -s: load save file
+	cmp	r8b, 's'
+	je	.load_save
+	call	bad_args_error
+.load_save:
+	mov	byte [curr_opt], 's'
+	jmp	.clear_arg
+.no_args:
+	; If arg parsing ended while an option was waiting on a value, the args are bad
+	cmp	byte [curr_opt], 0
+	je	init
+	call	bad_args_error
+init:
 	; Set options
 	mov	eax, dword [new_c_iflag]
 	and	eax, 4294965780; (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON)
@@ -412,6 +506,8 @@ _start:
 	mov	rsi, TCSETSW2
 	mov	rdx, new_termio
 	syscall
+	; Set in_game
+	mov	byte [in_game], 1
 	cmp	rax, 0
 	jl	exit
 	call clear_screen
@@ -604,6 +700,7 @@ main_loop:
 	jmp	main_loop
 	;}
 win:
+	call	update_toolbar
 	printmsg winner
 .loop:
 	mov	qword [input_buff], 0
@@ -615,7 +712,9 @@ win:
 	cmp	byte [input_buff], 13
 	jne .loop
 exit:
-
+	
+	cmp	byte [in_game], 1
+	jne	.early
 	; Restore terminal
 	mov	rax, 16
 	mov	rdi, 0
@@ -624,7 +723,8 @@ exit:
 	mov	rdx, og_termio
 	syscall
 	call clear_screen
-early_exit:
+	mov	byte [in_game], 0
+.early:
 	; Exit
 	mov	rax, 60
 	mov	rsi, 0
@@ -722,6 +822,7 @@ load_save:
 
 
 .loaded:
+	pop	rax
 	ret
 .size_err:
 	pop	rdx
@@ -1091,15 +1192,20 @@ clear_msg:
 	ret
 global prep_msg
 prep_msg:
+	cmp	byte [in_game], 1
+	jne	.ret
 	save
 	mov	rax, 1
 	mov	rdi, 1
 	mov	rsi, prepMsgCode
 	mov	rdx, prepMsgLen
 	syscall
+.ret:
 	ret
 global prep_err
 prep_err:
+	cmp	byte [in_game], 1
+	jne	.ret
 	save
 	mov	rax, 1
 	mov	rdi, 1
@@ -1111,15 +1217,19 @@ prep_err:
 	mov	rsi, errStartCode
 	mov	rdx, errStartLen
 	syscall
+.ret:
 	ret
 global end_err
 end_err:
+	cmp	byte [in_game], 1
+	jne	.ret
 	mov	rax, 1
 	mov	rdi, 1
 	mov	rsi, resetGraphCode
 	mov	rdx, resetGraphLen
 	syscall
 	restore
+.ret:
 	ret
 ;}
 ;WIN{
@@ -1277,4 +1387,20 @@ bad_input_error:
 global term_size_error
 term_size_error:
 	printerr term_size
+	jmp	exit
+global no_load_error
+no_load_error:
+	printerr no_load
+	jmp	exit
+global no_open_error
+no_open_error:
+	printerr no_open
+	jmp	exit
+global bad_args_error
+bad_args_error:
+	printerr bad_args
+	jmp	exit
+global bad_dev_error
+bad_dev_error:
+	printerr bad_dev
 	jmp	exit
