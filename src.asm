@@ -239,6 +239,9 @@ section .data
 		filled: db "00/81"
 	toolbarLen	equ $-toolbar
 	;CODES{
+	blinkCode:
+		db	ESC, "[5m"
+	blinkLen	equ $-blinkCode
 	highlightCode:
 		db	ESC, "[30;47m"
 	highlightLen	equ $-highlightCode
@@ -306,7 +309,10 @@ section .data
 		db ESC, "8"
 	restoreCursorLen	equ $-restoreCursorCode
 	enterBoldCode:
-		db ESC, "[1m", ESC, "[34m"
+		db ESC, "[1m", 
+	enterBlueCode:
+		db ESC, "[34m"
+	enterBlueLen	equ $-enterBlueCode
 	enterBoldLen	equ $-enterBoldCode
 	jumpCode:
 		db ESC, "["
@@ -715,6 +721,8 @@ exit:
 	
 	cmp	byte [in_game], 1
 	jne	.early
+	; Clear all graphics
+	printCode resetGraph
 	; Restore terminal
 	mov	rax, 16
 	mov	rdi, 0
@@ -868,6 +876,27 @@ highlight:
 	push	rdi
 	cmp	dil, byte [index]
 	jne	.cont
+	;jmp	.iter
+	; Make the current location blink
+	; value at current
+	printCode blink
+	mov	rax, currentState
+	pop	rdi
+	push	rdi
+	mov	sil, [rax+rdi]
+	mov	rax, initialState
+	cmp	byte [rax+rdi], 0
+	je	.curr_no_bold
+	printCode enterBlue
+	mov	rax, currentState
+	pop	rdi
+	push	rdi
+	mov	sil, [rax+rdi]
+.curr_no_bold:
+	add	sil, 48
+	mov	byte [replaceWith], sil
+	call	write_num
+	printCode resetGraph
 	jmp	.iter
 .cont:
 	xor	rdi, rdi
