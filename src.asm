@@ -1,4 +1,5 @@
 [WARNING -number-overflow]
+DEFAULT ABS
 ; TODO
 ; Active error checking
 ; Random board generation
@@ -420,7 +421,7 @@ _start:
 	cmp	rax, 0
 	jl	exit
 	; Store winsize info
-	mov	ax, [ws_row]
+	mov	ax, word [ws_row]
 	cmp	ax, ROW_MIN
 	jl	term_size_error
 	mov	word [expected_row], ax
