@@ -1,11 +1,12 @@
+[WARNING -number-overflow]
 ; TODO
-; lets make a new error for dis
-; Highlight same num (DONE)- Highlight row/col for empty (NOT DONE)
 ; Active error checking
 ; Random board generation
 ; Save files (also would allow dynamic board loading)
 
 ;-----Definitions-----;
+; Important constants
+%define CURRENT_VERSION	"2"	; Latest save file version
 ; Call constants
 %define TCGETS2		0x802C542A
 %define TCSETSW2	0x402C542C
@@ -13,22 +14,13 @@
 ; Value constants
 %define INBUFFSIZE	16
 %define FBUFFSIZE	512
+%define BOARD_WIDTH	37
+%define MAX_TITLE_LEN	35
 %define COL_MIN		100
 %define ROW_MIN		50
 ; Char constants
 %define ESC		0x1B
 %define DEL		0x7F
-%define TOP_RIGHT_CORNER	'┐'
-%define TOP_LEFT_CORNER		'┌'
-%define BOTTOM_RIGHT_CORNER	'┘'
-%define BOTTOM_LEFT_CORNER	'└'
-%define INSIDE_TOP_CORNER	'┬'
-%define INSIDE_BOTTOM_CORNER	'┴'
-%define OUTSIDE_RIGHT_CORNER	'┤'
-%define OUTSIDE_LEFT_CORNER	'├'
-%define HLINE			'─'
-%define VLINE			'│'
-%define CROSS			'┼'
 %define SPACE			' '
 %define SUDOKU_TOP		"┌───┬───┬───┰───┬───┬───┰───┬───┬───┐"
 %define SUDOKU_MID		"│   │   │   ┃   │   │   ┃   │   │   │"
@@ -36,6 +28,11 @@
 %define SUDOKU_THIRD		"┝━━━┿━━━┿━━━╋━━━┿━━━┿━━━╋━━━┿━━━┿━━━┥"
 %define SUDOKU_BOTTOM		"└───┴───┴───┸───┴───┴───┸───┴───┴───┘"
 %define LINE_END		0x1B, "[1E"
+%define TOPBAR_LINE		"0"
+%define TOP_CELL_LINE		"3"
+%define BOTTOM_CELL_LINE	"19"
+%define TOOLBAR_LINE		"21"
+%define MESSAGE_LINE		"22"
 
 ; MACROS{
 %macro printCode 1
@@ -137,7 +134,14 @@
 %endmacro
 ;}
 section .data
+	funny:
+		db	0, 0, 0, 0xd1, 0x8c, 0x9b, 0x94, 0x8c
+	versionString:
+		db "<V",CURRENT_VERSION,">"
+	versionLen	equ $-versionString
 	;BOARD{
+	initialSave:
+		db	"<I"
 	initialState:
 		i_r0:	db 0,3,2,  9,7,5,  1,8,6
 		i_r1:	db 1,9,8,  2,6,3,  4,7,5
@@ -148,6 +152,11 @@ section .data
 		i_r6:	db 8,5,7,  6,3,2,  9,1,4
 		i_r7:	db 3,2,4,  1,8,9,  5,6,7
 		i_r8:	db 9,1,6,  5,4,7,  8,3,0
+	initialEnd:
+		db	">"
+	initialLen	equ $-initialSave
+	currentSave:
+		db	"<B"
 	currentState:
 		c_r0:	db 0,0,0,  0,0,0,  0,0,0
 		c_r1:	db 0,0,0,  0,0,0,  0,0,0
@@ -158,6 +167,9 @@ section .data
 		c_r6:	db 0,0,0,  0,0,0,  0,0,0
 		c_r7:	db 0,0,0,  0,0,0,  0,0,0
 		c_r8:	db 0,0,0,  0,0,0,  0,0,0
+	currentEnd:
+		db	">"
+	currentLen	equ $-currentSave
 	endState:
 	times 5 db 0
 	sqr_0_0:	
@@ -197,6 +209,8 @@ section .data
 		dq c_r7+6, c_r7+7, c_r7+8
 		dq c_r8+6, c_r8+7, c_r8+8
 	sqr_end:
+	notesSave:
+		db "<N"
 	savedNotes:
 		n_r0:	dw 0,0,0,  0,0,0,  0,0,0
 		n_r1:	dw 0,0,0,  0,0,0,  0,0,0
@@ -207,6 +221,9 @@ section .data
 		n_r6:	dw 0,0,0,  0,0,0,  0,0,0
 		n_r7:	dw 0,0,0,  0,0,0,  0,0,0
 		n_r8:	dw 0,0,0,  0,0,0,  0,0,0
+	notesEnd:
+		db ">"
+	notesLen	equ $-notesSave
 	board:
 		db SUDOKU_TOP, LINE_END
 		db SUDOKU_MID, LINE_END
@@ -229,12 +246,16 @@ section .data
 		db SUDOKU_BOTTOM, LINE_END
 	boardSize	equ $-board
 	;}
+	topbar:
+		times BOARD_WIDTH db '-'
+		db	LINE_END
+	topbarLen	equ $-topbar
 	toolbar:
 		db 32, 32 ; spacing
 		mode:	db "I"
 		db 32, 32 ; spacing
 		notes:	db "                         "
-		notesLen	equ $-notes
+		tbNotesLen	equ $-notes
 		db 32, 32 ; spacing
 		filled: db "00/81"
 	toolbarLen	equ $-toolbar
@@ -246,13 +267,13 @@ section .data
 		db	ESC, "[30;47m"
 	highlightLen	equ $-highlightCode
 	prepToolbarCode:
-		db	ESC, "[20;0H"
+		db	ESC, "[",TOOLBAR_LINE,";0H"
 	prepToolbarLen	equ $-prepToolbarCode
 	clearMsgCode:
 		db	ESC, "[2K"
 	clearMsgLen	equ $-clearMsgCode
 	prepMsgCode:
-		db	ESC, "[21;0H"
+		db	ESC, "[",MESSAGE_LINE,";0H"
 	prepMsgLen	equ $-prepMsgCode
 	errStartCode:
 		db	ESC, "[31m", "Error: "
@@ -271,11 +292,11 @@ section .data
 		db ESC, "[16A"
 	wrapUpLen	equ $-wrapUpCode
 	endCode:
-		db ESC, "[18;35H"
+		db ESC, "[",BOTTOM_CELL_LINE,";35H"
 	endLen		equ $-endCode
 	homeCode:
 		; back to origin of the board
-		db ESC, "[2;3H"	; return to 0,0
+		db ESC, "[",TOP_CELL_LINE,";3H"	; return to 0,0
 	homeLen		equ $-homeCode
 	downCode:
 		; Down to next square
@@ -371,6 +392,7 @@ section .bss
 	input_buff	resb INBUFFSIZE
 	f_buff		resb FBUFFSIZE
 	arg_c		resq 1
+	save_file	resq 1
 	curr_opt	resb 1
 section .text
 ;INIT{
@@ -442,6 +464,8 @@ handle_args:
 	; Current arg should be the name/path of/to a save file
 	; push current arg_v value to the stack since we're using rax for a syscall
 	push	rax
+	; store the name of the file for later use
+	mov	qword [save_file], rax
 	; sys_open
 	mov	rax, 2
 	pop	rdi
@@ -517,6 +541,12 @@ init:
 	cmp	rax, 0
 	jl	exit
 	call clear_screen
+	; Draw the topbar
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, topbar
+	mov	rdx, topbarLen
+	syscall
 	; Draw board
 	mov	rax, 1
 	mov	rdi, 1
@@ -750,9 +780,9 @@ load_save:
 	mov	rdx, FBUFFSIZE
 	syscall
 	cmp	rax, 0
-	jl	.read_err
+	jl	load_save_end.read_err
 	cmp	rax, FBUFFSIZE
-	jge	.size_err
+	jge	load_save_end.size_err
 	; get the end of the jit
 	add	rax, f_buff
 	push	rax
@@ -760,19 +790,130 @@ load_save:
 	; get the first char
 	mov	r8b, byte [rsi]
 	cmp	r8b, '<'
-	jne	.bad_file_err
+	jne	load_save_end.bad_file_err
 	inc	rsi
 	mov	r8b, byte [rsi]
 	; First section should be version
 	cmp	r8b, 'V'
-	jne	.bad_file_err
+	jne	load_save_end.bad_file_err
 	; Check version number
 	inc	rsi
 	mov	r8w, word [rsi]
 	cmp	r8w, '1>' ; We only have version 1 currently
-	je	.load_ver_1
-	jmp	.bad_version_err
-.load_ver_1:
+	je	load_ver_1
+	cmp	r8w, '2>'
+	je	load_ver_2
+	jmp	load_save_end.bad_version_err
+load_ver_2:
+	; The only difference between v2 and v1 is the addition of a leading 'title' section, so v1 code is reused after reading the title
+	add	rsi, 2 ; gets passed version section
+	mov	r8b, byte [rsi]
+	cmp	r8b, 10 ; is newline
+	jne	.v2_t
+	inc	rsi
+.v2_t:
+	mov	r8w, word [rsi]
+	cmp	r8w, '<T'
+	jne	load_save_end.bad_file_err
+	add	rsi, 2
+	; here till the next > is the title string
+	; if this field is null or empty use the filename for the title
+	cmp	byte [rsi], '>'
+	je	.use_filename
+	cmp	byte [rsi], 0
+	je	.use_filename
+	; Store start of title
+	push	rsi
+	; get end of section
+.title_loop:
+	inc	rsi
+	cmp	byte [rsi], '>'
+	jne	.title_loop
+	; find length of title
+	pop	r8
+	; &end-&start = len
+	sub	rsi, r8
+	cmp	rsi, MAX_TITLE_LEN
+	jg	load_save_end.bad_file_err
+	; r8 has the total padding
+	push	r8
+	mov	r8, BOARD_WIDTH
+	sub	r8, rsi
+	; rcx has the count to write
+	mov	rcx, rsi
+	; rsi has the title string
+	pop	rsi
+	; Divide padding by 2 rounding down
+	shr	r8, 1
+	; r8 has where we start writing
+	add	r8, topbar
+	mov	rdi, r8
+	; write to topbar
+	rep	movsb
+	jmp	.v2_end
+.end_write:
+	jmp	.v2_end
+.use_filename:
+	; find end of path
+	; store the jit
+	push	rsi
+	; rsi has the save file pointer
+	mov	rsi, qword [save_file]
+.filename_end:
+	inc	rsi
+	cmp	byte [rsi], 0
+	jne	.filename_end
+	; now we're at the end of the file
+	; go back 8 bytes so we can compare by qword
+	sub	rsi, 8
+	; Check the last 5 bytes
+	; This line is equivelent to ...\.sdks regex
+	;test	qword [rsi], 0x8c949b8cd1000000
+	mov	r12, qword [funny]
+.poop_test:
+	test	qword [rsi], r12
+	jnz	.no_strip
+	sub	rsi, 5
+.no_strip:
+	; get to the end
+	add	rsi, 8
+	; store end
+	push	rsi
+	; find start of filename
+.filename_start:
+	dec	rsi
+	cmp	byte [rsi], '/'
+	je	.filename_start_e
+	cmp	byte [rsi], 0
+	je	.filename_start_e
+	jmp	.filename_start
+.filename_start_e:
+	; get to the first char
+	inc	rsi
+	; rcx stores the end
+	pop	rcx
+	; turn rcx into the length
+	sub	rcx, rsi
+	; check length
+	cmp	rcx, MAX_TITLE_LEN
+	jg	load_save_end.bad_file_err
+	; Calculate padding
+	mov	rdi, BOARD_WIDTH
+	; total width - size of title = total padding
+	sub	rdi, rcx
+	; divide by two rounding down
+	shr	rdi, 1
+	; write to topbar
+	add	rdi, topbar
+	rep movsb
+	; restore the file buffer
+	pop	rsi
+	; get it into shape
+	cmp	byte [rsi], '>'
+	jne	.v2_end
+.v2_end:
+	sub	rsi, 1
+load_ver_1:
 	add	rsi, 2 ; gets passed version section
 	mov	r8b, byte [rsi]
 	cmp	r8b, 10 ; is newline
@@ -782,7 +923,7 @@ load_save:
 	; get start of next section
 	pop	rax
 	cmp	rsi, rax	; are we at the end
-	jge	.loaded
+	jge	load_save_end.loaded
 	push	rax
 	mov	r8w, word [rsi]
 	add	rsi, 2 ; get to start of data
@@ -792,13 +933,13 @@ load_save:
 	je	.v1_b
 	cmp	r8w, '<N'
 	je	.v1_n
-	jmp	.bad_file_err
+	jmp	load_save_end.bad_file_err
 .v1_i:
 	mov	rcx, 81
 	mov	rdi, initialState
 	rep	movsb
 	cmp	byte [rsi], '>'
-	jne	.bad_file_err
+	jne	load_save_end.bad_file_err
 	inc	rsi
 	cmp	byte [rsi], 10
 	jne	.v1_new_sec
@@ -809,7 +950,7 @@ load_save:
 	mov	rdi, currentState
 	rep	movsb
 	cmp	byte [rsi], '>'
-	jne	.bad_file_err
+	jne	load_save_end.bad_file_err
 	inc	rsi
 	cmp	byte [rsi], 10
 	jne	.v1_new_sec
@@ -820,7 +961,7 @@ load_save:
 	mov	rdi, savedNotes
 	rep	movsw
 	cmp	byte [rsi], '>'
-	jne	.bad_file_err
+	jne	load_save_end.bad_file_err
 	inc	rsi
 	cmp	byte [rsi], 10
 	jne	.v1_new_sec
@@ -828,7 +969,7 @@ load_save:
 	jmp	.v1_new_sec
 	jmp	.v1_new_sec
 
-
+load_save_end:
 .loaded:
 	pop	rax
 	ret
@@ -1115,7 +1256,7 @@ update_toolbar:
 	mov	r9w, word [r8]
 	mov	rax, notes
 	; Clear notes
-	mov	rcx, notesLen
+	mov	rcx, tbNotesLen
 	mov	rsi, spaces
 	mov	rdi, notes
 	rep movsb
@@ -1352,7 +1493,6 @@ win_check:
 	mov	rcx, 0
 	jmp	.sqr_loop
 .checked_sqrs:
-	; TODO Squares
 	mov	rax, 1
 	ret
 .no:
@@ -1361,7 +1501,9 @@ win_check:
 	mov	rax, 0
 	ret
 .print_msg:
+	save
 	printmsg no
+	restore
 	mov	rax, 0
 	ret
 ;}
