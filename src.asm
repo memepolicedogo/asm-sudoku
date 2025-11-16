@@ -3,7 +3,6 @@ DEFAULT ABS
 ; TODO
 ; Active error checking
 ; Random board generation
-; Save files (also would allow dynamic board loading)
 
 ;-----Definitions-----;
 ; Important constants
