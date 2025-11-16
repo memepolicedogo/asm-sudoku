@@ -139,7 +139,7 @@ section .data
 	versionString:
 		db "<V",CURRENT_VERSION,">"
 	versionLen	equ $-versionString
-	;BOARD{
+	;GAMEDATA{
 	initialSave:
 		db	"<I"
 	initialState:
@@ -170,7 +170,6 @@ section .data
 	currentEnd:
 		db	">"
 	currentLen	equ $-currentSave
-	endState:
 	times 5 db 0
 	sqr_0_0:	
 		dq c_r0, c_r0+1, c_r0+2
@@ -224,6 +223,8 @@ section .data
 	notesEnd:
 		db ">"
 	notesLen	equ $-notesSave
+	;}
+	;GRAPHICS{
 	board:
 		db SUDOKU_TOP, LINE_END
 		db SUDOKU_MID, LINE_END
@@ -245,7 +246,6 @@ section .data
 		db SUDOKU_MID, LINE_END
 		db SUDOKU_BOTTOM, LINE_END
 	boardSize	equ $-board
-	;}
 	topbar:
 		times BOARD_WIDTH db '-'
 		db	LINE_END
@@ -259,7 +259,14 @@ section .data
 		db 32, 32 ; spacing
 		filled: db "00/81"
 	toolbarLen	equ $-toolbar
+	;}
 	;CODES{
+	saveScreenCode:
+		db	ESC, "[?47h"
+	saveScreenLen	equ $-saveScreenCode
+	restoreScreenCode:
+		db	ESC, "[?47l"
+	restoreScreenLen	equ $-restoreScreenCode
 	blinkCode:
 		db	ESC, "[5m"
 	blinkLen	equ $-blinkCode
@@ -769,9 +776,17 @@ exit:
 	syscall
 
 ; Functions
+global save_game
+save_game:;{
+	; get filename
+	; open file
+	; write to file
+	; return to game
+	ret
+;}
 global load_save
+load_save:;{
 ; Where RAX is an open file descriptor
-load_save:
 	push	rax
 	mov	rax, 0
 	pop	rdi
@@ -989,8 +1004,9 @@ load_save_end:
 	pop	rdx
 	mov	rax, -1
 	ret
+;}
 global highlight
-highlight:
+highlight:;{
 	; Save cursor
 	save
 	; Save current x and y
@@ -1128,7 +1144,7 @@ highlight:
 	pop	rdx
 	mov	byte [curr_x], dl
 	ret
-	; toggle with h?
+;}
 ; MOVES{
 global move_up
 move_up:
@@ -1402,9 +1418,8 @@ end_err:
 .ret:
 	ret
 ;}
-;WIN{
 global win_check
-win_check:
+win_check:;{
 	cmp	byte [filledCount], 81
 	jne	.no
 	; Actually check
@@ -1433,7 +1448,7 @@ win_check:
 	jne	.no
 	xor	r9, r9
 	add	rax, 9
-	cmp	rax, endState
+	cmp	rax, currentEnd
 	je	.checked_rows
 	mov	rcx, 0
 	jmp	.row_loop
