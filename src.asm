@@ -1,10 +1,12 @@
-[WARNING -number-overflow]
 DEFAULT ABS
 ; TODO
 ; Active error checking
 ; Random board generation
 
 ;-----Definitions-----;
+; Game defaults
+%define DEFAULT_HIGHLIGHT	1
+%define DEFAULT_MODE		'I'
 ; Important constants
 %define CURRENT_VERSION	"2"	; Latest save file version
 ; Call constants
@@ -252,7 +254,7 @@ section .data
 	topbarLen	equ $-topbar
 	toolbar:
 		db 32, 32 ; spacing
-		mode:	db "I"
+		mode:	db DEFAULT_MODE
 		db 32, 32 ; spacing
 		notes:	db "                         "
 		tbNotesLen	equ $-notes
@@ -261,6 +263,8 @@ section .data
 	toolbarLen	equ $-toolbar
 	;}
 	;CODES{
+	clear:		db ESC, "[2J", ESC, "[3J", ESC, "[H"
+	clearLen	equ $-clear
 	saveScreenCode:
 		db	ESC, "[?47h"
 	saveScreenLen	equ $-saveScreenCode
@@ -350,6 +354,8 @@ section .data
 		db "H"
 	jumpLen		equ $-jumpCode
 	;}
+	; TEXT{
+	defmsg	toggledHighlight, "Toggled highlighting"
 	defmsg	insertMode, "Entered insert mode"
 	defmsg	notesMode, "Entered notes mode"
 	defmsg	no, "Not quite!"
@@ -359,8 +365,8 @@ section .data
 	deferr	no_load, "Invalid save file",10
 	deferr	bad_args, "Invalid argument(s)",10
 	deferr	term_size, "Terminal is too small",10
-	deferr	bad_input, "An error occured while reading input"
-	deferr	init_overwrite, "Can't write over inital values"
+	deferr	bad_input, "An error occured while reading input" U
+	;}
 	;UTIL{
 	og_termio:
 		 c_iflag:	dd 0
@@ -378,12 +384,13 @@ section .data
 		new_c_line:	db 0
 		new_c_cc:	dq 0, 0, 0
 	;}
-	clear:		db ESC, "[2J", ESC, "[3J", ESC, "[H"
-	clearLen	equ $-clear
+	;VARS{
 	filledCount:		db 0
 	index:			db 0
 	spaces:		times 32 db 32
 	in_game:	db 0
+	do_highlight:	db DEFAULT_HIGHLIGHT
+	;}
 section .bss
 	curr_x:		resb 1
 	curr_y:		resb 1
@@ -705,6 +712,13 @@ main_loop:
 	je	.switch_note
 	cmp	byte [input_buff], 'i'
 	je	.switch_input
+	cmp	byte [input_buff], h
+	je	.toggle_highlight
+	jmp	main_loop
+.toggle_highlight:
+	xor	byte [do_highlight], 1
+	printmsg toggledHighlight
+	jmp	main_loop
 .switch_note:
 	; Enter note mode
 	mov	byte [mode], 'N'
@@ -1007,6 +1021,9 @@ load_save_end:
 ;}
 global highlight
 highlight:;{
+	; Check if highlighting is enabled
+	cmp	byte [do_highlight], 0
+	je	.no_highlight
 	; Save cursor
 	save
 	; Save current x and y
@@ -1143,6 +1160,7 @@ highlight:;{
 	mov	byte [curr_y], dl
 	pop	rdx
 	mov	byte [curr_x], dl
+.no_highlight:
 	ret
 ;}
 ; MOVES{
