@@ -365,7 +365,8 @@ section .data
 	deferr	no_load, "Invalid save file",10
 	deferr	bad_args, "Invalid argument(s)",10
 	deferr	term_size, "Terminal is too small",10
-	deferr	bad_input, "An error occured while reading input" U
+	deferr	bad_input, "An error occured while reading input"
+	deferr	init_overwrite, "Can't write over initial values"
 	;}
 	;UTIL{
 	og_termio:
@@ -712,7 +713,7 @@ main_loop:
 	je	.switch_note
 	cmp	byte [input_buff], 'i'
 	je	.switch_input
-	cmp	byte [input_buff], h
+	cmp	byte [input_buff], 'h'
 	je	.toggle_highlight
 	jmp	main_loop
 .toggle_highlight:
