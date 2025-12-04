@@ -1,5 +1,5 @@
 ; Format example, not a real save file
-<V{version number}>
+<V1> ; MUST be first
 <I{initial board}>
 <B{current board}>
 <N{notes}>

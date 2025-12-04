@@ -1,0 +1,7 @@
+; Format example, not a real save file
+<V2> ;  MUST be first
+<T{title, if null or empty, use file name sans .sdks}> ; Title MUST be after version
+; Title also can't be more than 35 chars, bc of the board size
+<I{initial board}>
+<B{current board}>
+<N{notes}>

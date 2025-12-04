@@ -35,9 +35,10 @@ DEFAULT ABS
 %define BOTTOM_CELL_LINE	"19"
 %define TOOLBAR_LINE		"21"
 %define MESSAGE_LINE		"22"
+%define INPUT_LINE		"23"
 
 ; MACROS{
-%macro printCode 1
+%macro printcode 1
 	mov	rax, 1
 	mov	rdi, 1
 	mov	rsi, %1Code
@@ -117,8 +118,10 @@ DEFAULT ABS
 	%1Err:	db %2, 0
 	%1Len	equ $-%1Err
 %endmacro
-%macro printmsg	1
+%macro printmsg	1-2 1
+	%if %2
 	call	prep_msg
+	%endif
 	mov	rax, 1
 	mov	rdi, 1
 	mov	rsi, %1Msg
@@ -141,6 +144,7 @@ section .data
 	versionString:
 		db "<V",CURRENT_VERSION,">"
 	versionLen	equ $-versionString
+	saveStart:
 	;GAMEDATA{
 	initialSave:
 		db	"<I"
@@ -172,6 +176,22 @@ section .data
 	currentEnd:
 		db	">"
 	currentLen	equ $-currentSave
+	notesSave:
+		db "<N"
+	savedNotes:
+		n_r0:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r1:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r2:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r3:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r4:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r5:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r6:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r7:	dw 0,0,0,  0,0,0,  0,0,0
+		n_r8:	dw 0,0,0,  0,0,0,  0,0,0
+	notesEnd:
+		db ">"
+	notesLen	equ $-notesSave
+	totalSaveLen	equ $-saveStart
 	times 5 db 0
 	sqr_0_0:	
 		dq c_r0, c_r0+1, c_r0+2
@@ -210,21 +230,6 @@ section .data
 		dq c_r7+6, c_r7+7, c_r7+8
 		dq c_r8+6, c_r8+7, c_r8+8
 	sqr_end:
-	notesSave:
-		db "<N"
-	savedNotes:
-		n_r0:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r1:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r2:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r3:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r4:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r5:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r6:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r7:	dw 0,0,0,  0,0,0,  0,0,0
-		n_r8:	dw 0,0,0,  0,0,0,  0,0,0
-	notesEnd:
-		db ">"
-	notesLen	equ $-notesSave
 	;}
 	;GRAPHICS{
 	board:
@@ -277,12 +282,18 @@ section .data
 	highlightCode:
 		db	ESC, "[30;47m"
 	highlightLen	equ $-highlightCode
+	prepTopbarCode:
+		db	ESC, "[",TOPBAR_LINE,";0H"
+	prepTopbarLen	equ $-prepTopbarCode
 	prepToolbarCode:
 		db	ESC, "[",TOOLBAR_LINE,";0H"
 	prepToolbarLen	equ $-prepToolbarCode
-	clearMsgCode:
+	clearLineCode:
 		db	ESC, "[2K"
-	clearMsgLen	equ $-clearMsgCode
+	clearLineLen	equ $-clearLineCode
+	prepInputCode:
+		db	ESC, "[", INPUT_LINE, ";0H"
+	prepInputLen	equ $-prepInputCode
 	prepMsgCode:
 		db	ESC, "[",MESSAGE_LINE,";0H"
 	prepMsgLen	equ $-prepMsgCode
@@ -359,7 +370,10 @@ section .data
 	defmsg	insertMode, "Entered insert mode"
 	defmsg	notesMode, "Entered notes mode"
 	defmsg	no, "Not quite!"
+	defmsg	fileExists, "A file with the given name already exists, overwrite? [y/N]"
+	defmsg	saveSuccess, "Game state saved"
 	defmsg	winner, "You won! Press Enter to close."
+	defmsg	save, "What should this save file be called? (Max. 35 chars)"
 	deferr	bad_dev, "The developer of this program did something wrong",10
 	deferr	no_open, "Failed to open the given file",10
 	deferr	no_load, "Invalid save file",10
@@ -386,11 +400,13 @@ section .data
 		new_c_cc:	dq 0, 0, 0
 	;}
 	;VARS{
-	filledCount:		db 0
-	index:			db 0
+	filledCount:	db 0
+	index:		db 0
 	spaces:		times 32 db 32
 	in_game:	db 0
 	do_highlight:	db DEFAULT_HIGHLIGHT
+	has_title:	db 0
+	title_len:	dq 0
 	;}
 section .bss
 	curr_x:		resb 1
@@ -406,6 +422,7 @@ section .bss
 		resb 4
 	input_buff	resb INBUFFSIZE
 	f_buff		resb FBUFFSIZE
+	title_buff	resb 48
 	arg_c		resq 1
 	save_file	resq 1
 	curr_opt	resb 1
@@ -572,7 +589,7 @@ init:
 	home
 	; Populate board
 	; Bold inital inputs
-	printCode enterBold
+	printcode enterBold
 	mov	r8, initialState
 .populate_loop:
 	cmp	r8, initialState+80
@@ -592,7 +609,7 @@ init:
 	jmp	.populate_loop
 .end_populate:
 	; No longer bold
-	printCode resetGraph
+	printcode resetGraph
 	home
 	call	update_toolbar
 	; Set values
@@ -715,6 +732,11 @@ main_loop:
 	je	.switch_input
 	cmp	byte [input_buff], 'h'
 	je	.toggle_highlight
+	cmp	byte [input_buff], 's'
+	je	.save_game
+	jmp	main_loop
+.save_game:
+	call	save_game
 	jmp	main_loop
 .toggle_highlight:
 	xor	byte [do_highlight], 1
@@ -774,7 +796,7 @@ exit:
 	cmp	byte [in_game], 1
 	jne	.early
 	; Clear all graphics
-	printCode resetGraph
+	printcode resetGraph
 	; Restore terminal
 	mov	rax, 16
 	mov	rdi, 0
@@ -793,10 +815,278 @@ exit:
 ; Functions
 global save_game
 save_game:;{
+	; save cursor position
+	save
+	; check if game has a title, if so fill that by default
+	mov	byte [title_len], 0
+	cmp	byte [has_title], 0
+	je	.no_title
+	; if so we need to get it from the uh
+	mov	rsi, topbar	; the this
+	mov	rdi, title_buff ; put it here
+	dec	rsi
+.title_loop_1:
+	inc	rsi
+	cmp	byte [rsi], '-'
+	je	.title_loop_1
+	; we are at the start of text
+.title_loop_2:
+	movsb
+	cmp	byte [rsi], '-'
+	jne	.title_loop_2
+	; now we have the title
+	; print it to the yeah
+	mov	rsi, title_buff	; rsi = title_buff
+	; rdi = title_buff+len(title_buf)
+	sub	rdi, rsi ; rdi = title_buff+len(title_buff)-title_buff = len(title_buff)
+	mov	qword [title_len], rdi
+	printcode prepMsg
+	printmsg save, 0
+	printcode prepInput
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, title_buff
+	mov	rdx, qword[title_len]
+	syscall
+	; Now we move on the same concept
+	jmp	.input_loop
+.no_title:
+	printcode prepMsg
+	printmsg save, 0
+	printcode prepInput
 	; get filename
+.input_loop:
+	cmp	qword [title_len], 0
+	je	.title_empty
+	jne	.not_title_empty
+.title_empty:
+	mov	byte [has_title], 0
+	jmp	.aqwsed
+.not_title_empty:
+	mov	byte [has_title], 1
+	jmp	.aqwsed
+	
+.aqwsed:
+	; this will be fun
+	; read an input at a time, print chars as they are inputed UNLESS it grows the jit too big
+	mov	qword [input_buff], 0
+	mov	rax, 0
+	mov	rdi, 0
+	mov	rsi, input_buff
+	mov	rdx, INBUFFSIZE
+	syscall
+	cmp	rax, 0
+	jl	bad_input_error
+	; char: check size then print/skip
+	; delete: remove a char
+	; enter: submit
+	; else: ignore
+	cmp	byte [input_buff], 127	; delete
+	je	.del
+	cmp	byte [input_buff], 10	; enter
+	je	.enter
+	cmp	byte [input_buff], 13	; enter
+	je	.enter
+	; Don't bother with char check if title too big
+	cmp	qword [title_len], MAX_TITLE_LEN
+	je	.input_loop
+	; space
+	cmp	byte [input_buff], 32
+	je	.char
+	; num
+	cmp	byte [input_buff], 48
+	jl	.input_loop
+	cmp	byte [input_buff], 57
+	jle	.char
+	cmp	byte [input_buff], 65
+	jl	.input_loop
+	cmp	byte [input_buff], 122
+	jg	.input_loop
+	; either a char or one of [\]^_`
+	; underscore is chill asf
+	; oh yeah spaces are ok too
+.char:
+	cmp	byte [input_buff], 90
+	jl	.char_cont
+	cmp	byte [input_buff], 97
+	jge	.char_cont
+	cmp	byte [input_buff], 95
+	jne	.input_loop
+.char_cont:
+	mov	rsi, input_buff
+	mov	rdi, title_buff
+	add	rdi, qword [title_len]
+	movsb
+	inc	qword [title_len]
+	; Write char
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, input_buff
+	mov	rdx, 1
+	syscall
+	jmp	.input_loop
+.del:
+	; check that we aren't underflow
+	cmp	qword [title_len], 0
+	je	.input_loop
+	; Null char
+	mov	rdi, title_buff
+	add	rdi, qword [title_len]
+	mov	byte [rdi], 0
+	dec	qword [title_len]
+	; move left once
+	printcode postWrite
+	; write space
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, spaces
+	mov	rdx, 1
+	syscall
+	; move left again
+	printcode postWrite
+	jmp	.input_loop
+.enter:
+	; check that title isn't empty
+	cmp	qword [title_len], 0
+	je	.input_loop
+	; write title to topbar
+	; first clear it
+	mov	rdi, topbar
+	mov	rcx, MAX_TITLE_LEN
+	add	rcx, rdi
+.title_clear_loop:
+	mov byte [rdi], '-'
+	inc	rdi
+	cmp	rdi, rcx
+	jne	.title_clear_loop
+	mov	rax, MAX_TITLE_LEN
+	sub	rax, qword [title_len]
+	shr	rax, 1
+	mov	rdi, topbar
+	add	rdi, rax
+	mov	rsi, title_buff
+	mov	rcx, qword [title_len]
+	cld
+	rep movsb
+	; write topbar
+	printcode prepTopbar
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, topbar
+	mov	rdx, topbarLen
+	syscall
+	; clear input
+	printcode prepInput
+	printcode clearLine
+	; add ".sdks" to the title
+	mov	rsi, title_buff
+	add	rsi, qword [title_len]
+	mov	byte [rsi], '.'
+	inc	rsi
+	mov	byte [rsi], 's'
+	inc	rsi
+	mov	byte [rsi], 'd'
+	inc	rsi
+	mov	byte [rsi], 'k'
+	inc	rsi
+	mov	byte [rsi], 's'
+.open:
 	; open file
+	mov	rax, 2
+	mov	rdi, title_buff
+	mov	rsi, 194; (O_CREAT | O_EXCL | O_RDWR)
+	mov	rdx, 420; (-rw-r--r--)
+	syscall
+	cmp	rax, -17
+	je	.file_exists
+	cmp	rax, 0
+	jl	bad_dev_error
+.test_breakpoint:
+	jmp	.write
+
+.file_exists:
+	printcode prepMsg
+	printmsg fileExists, 0
+	printcode prepInput
+.f_exist_loop:
+	mov	qword [input_buff], 0
+	mov	rax, 0
+	mov	rdi, 0
+	mov	rsi, input_buff
+	mov	rdx, INBUFFSIZE
+	syscall
+	cmp	rax, 0
+	jl	bad_input_error
+	cmp	byte [input_buff], 'y'
+	je	.over
+	cmp	byte [input_buff], 'Y'
+	je	.over
+	cmp	byte [input_buff], 10
+	je	.no
+	cmp	byte [input_buff], 'n'
+	je	.no
+	cmp	byte [input_buff], 'N'
+	je	.no
+	jmp	.f_exist_loop
+.no:
+	; cleanup
+	printcode prepMsg
+	printcode clearLine
+	printcode prepInput
+	printcode clearLine
+	jmp	.ret
+.over:
+	; cleanup
+	printcode prepMsg
+	printcode clearLine
+	printcode prepInput
+	printcode clearLine
+	; delete then reopen
+	mov	rax, 87
+	mov	rdi, title_buff
+	syscall
+	cmp	rax, 0
+	jl	.ret
+	jmp	.open
+.write:
+	push	rax
 	; write to file
+	mov	rdi, f_buff
+	mov	word [rdi], '<T'
+	add	rdi, 2
+	mov	byte [rdi], '>'
+	; version
+	mov	rax, 1
+	pop	rdi
+	push	rdi
+	mov	rsi, versionString
+	mov	rdx, versionLen
+	syscall
+	; title
+	mov	rax, 1
+	pop	rdi
+	push	rdi
+	mov	rsi, f_buff
+	mov	rdx, 3
+	syscall
+	mov	qword [f_buff], 0
+	; main data
+	mov	rax, 1
+	pop	rdi
+	push	rdi
+	mov	rsi, saveStart
+	mov	rdx, totalSaveLen
+	syscall
+	;close file
+	mov	rax, 2
+	pop	rdi
+	syscall
+	printcode prepMsg
+	printcode clearLine
+	printmsg saveSuccess, 0
 	; return to game
+.ret:
+	restore
 	ret
 ;}
 global load_save
@@ -942,6 +1232,7 @@ load_ver_2:
 	cmp	byte [rsi], '>'
 	jne	.v2_end
 .v2_end:
+	mov	byte [has_title], 1
 	sub	rsi, 1
 load_ver_1:
 	add	rsi, 2 ; gets passed version section
@@ -1054,7 +1345,7 @@ highlight:;{
 	;jmp	.iter
 	; Make the current location blink
 	; value at current
-	printCode blink
+	printcode blink
 	mov	rax, currentState
 	pop	rdi
 	push	rdi
@@ -1062,7 +1353,7 @@ highlight:;{
 	mov	rax, initialState
 	cmp	byte [rax+rdi], 0
 	je	.curr_no_bold
-	printCode enterBlue
+	printcode enterBlue
 	mov	rax, currentState
 	pop	rdi
 	push	rdi
@@ -1071,7 +1362,7 @@ highlight:;{
 	add	sil, 48
 	mov	byte [replaceWith], sil
 	call	write_num
-	printCode resetGraph
+	printcode resetGraph
 	jmp	.iter
 .cont:
 	xor	rdi, rdi
@@ -1090,7 +1381,7 @@ highlight:;{
 	; Clean remove any old highlighting
 .color:
 	; Write control code
-	printCode highlight
+	printcode highlight
 .clean:
 	mov	rax, initialState
 	xor	rdi, rdi
@@ -1098,7 +1389,7 @@ highlight:;{
 	mov	sil, byte [rax+rdi]
 	cmp	sil, 0
 	je	.no_bold
-	printCode enterBold
+	printcode enterBold
 .no_bold:
 	; Clear cell
 	call	remove_num
@@ -1108,7 +1399,7 @@ highlight:;{
 	mov	byte [replaceWith], sil
 	call	write_num
 	; Clear formating
-	printCode resetGraph
+	printcode resetGraph
 .iter:
 	call	move_right
 	cmp	byte [index], 0
@@ -1144,10 +1435,10 @@ highlight:;{
 	add	rax, rdx
 	cmp	byte [rax], 0
 	je	.z_no_bold
-	printCode enterBold
+	printcode enterBold
 .z_no_bold:
 	call	write_num
-	printCode resetGraph
+	printcode resetGraph
 .no_clean:
 	call	move_right
 	cmp	byte [index], 0
@@ -1174,7 +1465,7 @@ move_up:
 	sub	byte [index], 9
 	ret
 .down:
-	printCode wrapDown
+	printcode wrapDown
 	mov	byte [curr_y], 8
 	mov	byte [index], 72
 	mov	al, byte [curr_x]
@@ -1189,7 +1480,7 @@ move_down:
 	add	byte [index], 9
 	ret
 .up:
-	printCode wrapUp
+	printcode wrapUp
 	mov	byte [curr_y], 0
 	mov	byte [index], 0
 	mov	al, byte [curr_x]
@@ -1209,7 +1500,7 @@ move_left:
 	ret
 .up:
 	up
-	printCode lineEnd
+	printcode lineEnd
 	mov	byte [curr_x], 8
 	dec	byte [index]
 	ret
@@ -1230,7 +1521,7 @@ move_right:
 	ret
 .down:
 	down
-	printCode lineStart
+	printcode lineStart
 	mov	byte [curr_x], 0
 	inc	byte [index]
 	ret
@@ -1389,8 +1680,8 @@ clear_msg:
 	; Remove the text
 	mov	rax, 1
 	mov	rdi, 1
-	mov	rsi, clearMsgCode
-	mov	rdx, clearMsgLen
+	mov	rsi, clearLineCode
+	mov	rdx, clearLineLen
 	syscall
 	; reset cursor position
 	restore
@@ -1440,7 +1731,7 @@ end_err:
 global win_check
 win_check:;{
 	cmp	byte [filledCount], 81
-	jne	.no
+	jne	.no_win
 	; Actually check
 	mov	rax, currentState
 	; r9w holds the state
@@ -1464,7 +1755,7 @@ win_check:;{
 	cmp	rcx, 9
 	jl	.row_loop
 	cmp	r9w, 511
-	jne	.no
+	jne	.no_win
 	xor	r9, r9
 	add	rax, 9
 	cmp	rax, currentEnd
@@ -1491,7 +1782,7 @@ win_check:;{
 	cmp	rcx, 81
 	jl	.col_loop
 	cmp	r9w, 511
-	jne	.no
+	jne	.no_win
 	xor	r9, r9
 	add	rax, 1
 	cmp	rax, c_r1
@@ -1519,7 +1810,7 @@ win_check:;{
 	cmp	rcx, 72
 	jl	.sqr_loop
 	cmp	r9w, 511
-	jne	.no
+	jne	.no_win
 	xor	r9, r9
 	add	rax, rcx
 	cmp	rax, sqr_end
@@ -1529,7 +1820,7 @@ win_check:;{
 .checked_sqrs:
 	mov	rax, 1
 	ret
-.no:
+.no_win:
 	cmp	byte [filledCount], 81
 	je	.print_msg
 	mov	rax, 0
@@ -1541,7 +1832,7 @@ win_check:;{
 	mov	rax, 0
 	ret
 ;}
-;WRITE{
+WRITE:;{
 global remove_num
 remove_num:
 	mov byte [replaceWith], 32
@@ -1553,7 +1844,7 @@ write_num:
 	mov	rdx, replaceLen
 	syscall
 	; Move cursor back over
-	printCode postWrite
+	printcode postWrite
 	; Update stored jit
 	mov	rax, currentState
 	push	r8
@@ -1580,7 +1871,7 @@ clear_screen:
 	syscall
 	ret
 ;}
-; Errors
+ERRORS: ;{
 global init_overwrite_error
 init_overwrite_error:
 	printerr init_overwrite
@@ -1609,3 +1900,4 @@ global bad_dev_error
 bad_dev_error:
 	printerr bad_dev
 	jmp	exit
+;}

@@ -4,4 +4,4 @@ sudoku
 *.o
 *.c
 a.out
-.gdb_history
+.gdb*
