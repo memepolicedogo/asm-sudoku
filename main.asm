@@ -1,4 +1,5 @@
 DEFAULT ABS
+%include "include/h.asm"
 ; TODO
 ; Active error checking
 ; Random board generation
@@ -6,6 +7,7 @@ DEFAULT ABS
 ;-----Definitions-----;
 ; Game defaults
 %define DEFAULT_HIGHLIGHT	1
+%define DEFAULT_CHECK		0
 %define DEFAULT_MODE		'I'
 ; Important constants
 %define CURRENT_VERSION	"2"	; Latest save file version
@@ -149,15 +151,15 @@ section .data
 	initialSave:
 		db	"<I"
 	initialState:
-		i_r0:	db 0,3,2,  9,7,5,  1,8,6
-		i_r1:	db 1,9,8,  2,6,3,  4,7,5
-		i_r2:	db 6,7,5,  4,1,8,  2,9,3
-		i_r3:	db 5,6,9,  7,2,1,  3,4,8
-		i_r4:	db 7,8,1,  3,5,4,  6,2,9
-		i_r5:	db 2,4,3,  8,9,6,  7,5,1
-		i_r6:	db 8,5,7,  6,3,2,  9,1,4
-		i_r7:	db 3,2,4,  1,8,9,  5,6,7
-		i_r8:	db 9,1,6,  5,4,7,  8,3,0
+		i_r0:	db 0,0,0,  0,0,0,  0,0,0
+		i_r1:	db 0,0,0,  0,0,0,  0,0,0
+		i_r2:	db 0,0,0,  0,0,0,  0,0,0
+		i_r3:	db 0,0,0,  0,0,0,  0,0,0
+		i_r4:	db 0,0,0,  0,0,0,  0,0,0
+		i_r5:	db 0,0,0,  0,0,0,  0,0,0
+		i_r6:	db 0,0,0,  0,0,0,  0,0,0
+		i_r7:	db 0,0,0,  0,0,0,  0,0,0
+		i_r8:	db 0,0,0,  0,0,0,  0,0,0
 	initialEnd:
 		db	">"
 	initialLen	equ $-initialSave
@@ -193,6 +195,31 @@ section .data
 	notesLen	equ $-notesSave
 	totalSaveLen	equ $-saveStart
 	times 5 db 0
+	; board structure
+	;ROWS{
+	%assign r 0
+	%rep 9
+	row_%[r]: 
+		%assign i 0
+		%rep 9
+			dq c_r%[r]+i
+		%assign i i+1
+		%endrep
+	%assign r r+1
+	%endrep
+	;}
+	;COLS{
+	%assign c 0
+	%rep 9
+		col_%[c]:
+		%assign i 0
+		%rep 9
+			dq currentState+c+i
+		%assign i i+9
+		%endrep
+	%assign c c+1
+	%endrep
+	;}
 	sqr_0_0:	
 		dq c_r0, c_r0+1, c_r0+2
 		dq c_r1, c_r1+1, c_r1+2
@@ -405,6 +432,7 @@ section .data
 	spaces:		times 32 db 32
 	in_game:	db 0
 	do_highlight:	db DEFAULT_HIGHLIGHT
+	do_check:	db DEFAULT_CHECK
 	has_title:	db 0
 	title_len:	dq 0
 	;}
