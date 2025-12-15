@@ -16,6 +16,9 @@
 		%endrep
 	%assign x x+1
 	%endrep
+	%undef x
+	%undef y
+	%undef i
 	extern check_input
 	extern gen_board
 %endif

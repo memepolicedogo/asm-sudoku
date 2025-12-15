@@ -3,15 +3,22 @@
 %define BOARD_LEN 81
 %define RAND_SIZE MAX_TRIES*BOARD_LEN*3; three bytes per grab-bag
 section .data
-	rand_file	db "/dev/urandom",0
+	rand_file:	db "/dev/urandom",0
+
+	debugMsg:	db "Random: ("
+	x:		db 0, ","
+	y:		db 0, ") = "
+	v:		db 0,10
+	debugLen	equ $-debugMsg
 section .text
 ; int gen_board(int square_count);
 gen_board:
 	%define count qword [rbp+16]
 	%define tries qword [rbp-8]
+	%define rand qword [rbp-16]
 	push	rbp
 	mov	rbp, rsp
-	sub	rsp, 8
+	sub	rsp, 16
 	mov	tries, MAX_TRIES
 	; If count is 0 quit with no error code
 	mov	rax, 1
@@ -54,7 +61,7 @@ gen_board:
 	syscall
 	; rsi = random data
 	pop	rsi
-	push	rsi
+	mov	rand, rsi
 .gen_loop:
 	cmp	count, 0
 	je	.good_gen
@@ -72,6 +79,10 @@ gen_board:
 	div	rbx
 	inc	rdx
 	; rdx = v
+	%ifdef DEBUG
+	mov	byte [v], dl
+	add	byte [v], 48
+	%endif
 	push	rdx
 	
 	; get y
@@ -83,6 +94,10 @@ gen_board:
 	mov	rbx, 9
 	div	rbx
 	; rdx = y
+	%ifdef DEBUG
+	mov	byte [y], dl
+	add	byte [y], 48
+	%endif
 	push	rdx
 
 	; get x
@@ -95,8 +110,21 @@ gen_board:
 	div	rbx
 	; rdx = x
 	push	rdx
+	mov	rand, rsi
+	%ifdef DEBUG
+	mov	byte [x], dl
+	add	byte [x], 48
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, debugMsg
+	mov	rdx, debugLen
+	;syscall
+	pop	rdx
+	push	rdx
+	%endif
 	; check if value is acceptable
 	call	check_input
+	mov	rsi, rand
 	; get the index
 	pop	r8 ; x
 	cmp	rax, 0
@@ -116,7 +144,14 @@ gen_board:
 	cmp	byte [rdi], 0
 	jne	.bad_try
 	; write val
+	; Initial
 	mov	byte [rdi], al
+	; Current (needed for check_input)
+	mov 	rbx, rdi
+	sub	rbx, initialState
+	; rbx has offset
+	add	rbx, col_0
+	mov	byte [rbx], al
 	jmp	.good_try
 
 

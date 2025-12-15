@@ -20,8 +20,8 @@ DEFAULT ABS
 %define FBUFFSIZE	512
 %define BOARD_WIDTH	37
 %define MAX_TITLE_LEN	35
-%define COL_MIN		100
-%define ROW_MIN		50
+%define COL_MIN		30
+%define ROW_MIN		30
 ; Char constants
 %define ESC		0x1B
 %define DEL		0x7F
@@ -576,6 +576,15 @@ handle_args:
 	je	init
 	call	bad_args_error
 init:
+	mov	rax, 0
+	mov	rdi, 1
+	mov	rsi, input_buff
+	mov	rdx, 1
+	syscall
+	mov	rax, 10
+	push	rax
+	call	gen_board
+	pop	rax
 	; Set options
 	mov	eax, dword [new_c_iflag]
 	and	eax, 4294965780; (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON)

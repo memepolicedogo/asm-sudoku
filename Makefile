@@ -3,7 +3,7 @@ ASM_FLAGS= -f elf64
 ASSEMBLE=$(ASM) $(ASM_FLAGS)
 LINK=ld
 
-debug: ASM_FLAGS+= -g -F dwarf
+debug: ASM_FLAGS+= -g -F dwarf -dDEBUG=1
 debug: sudoku
 
 sudoku: main.o check_input.o gen_board.o
