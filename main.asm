@@ -9,6 +9,7 @@ DEFAULT ABS
 %define DEFAULT_HIGHLIGHT	1
 %define DEFAULT_CHECK		0
 %define DEFAULT_MODE		'I'
+%define DEFAULT_FILLED_CELLS	20	; how many cells are generated filled by default
 ; Important constants
 %define CURRENT_VERSION	"2"	; Latest save file version
 ; Call constants
@@ -434,6 +435,7 @@ section .data
 	do_highlight:	db DEFAULT_HIGHLIGHT
 	do_check:	db DEFAULT_CHECK
 	has_title:	db 0
+	has_cells:	db 0
 	title_len:	dq 0
 	;}
 section .bss
@@ -517,9 +519,36 @@ handle_args:
 	; Load save
 	cmp	r8b, 's'
 	je	.save_file_name
+	cmp	r8b, 'n'
+	je	.gen_cell_count
 	; Implicit deny
 	call	bad_args_error
 	; Handle value accordingly
+.gen_cell_count:
+	xor	r8, r8
+.count_cells_loop:
+	add	r8b, byte [rax] ; first char of the
+	sub	r8b, 48
+	inc	rax
+	cmp	byte [rax], 0
+	je	.exit_cell_count_loop
+	push	rax
+	xor	rax, rax
+	mov	rax, r8
+	mov	rbx, 10
+	mul	rbx
+	mov	r8, rax
+	pop	rax
+	jmp	.count_cells_loop
+.exit_cell_count_loop:
+	push	rax
+	push	r8
+	call	gen_board
+	pop	r8
+	pop	rax
+	mov	byte [has_cells], 1
+	mov	byte [curr_opt], 0
+	jmp	.clear_arg
 .save_file_name:
 	; Current arg should be the name/path of/to a save file
 	; push current arg_v value to the stack since we're using rax for a syscall
@@ -566,9 +595,14 @@ handle_args:
 	; -s: load save file
 	cmp	r8b, 's'
 	je	.load_save
+	cmp	r8b, 'n'
+	je	.gen_custom
 	call	bad_args_error
 .load_save:
 	mov	byte [curr_opt], 's'
+	jmp	.clear_arg
+.gen_custom:
+	mov	byte [curr_opt], 'n'
 	jmp	.clear_arg
 .no_args:
 	; If arg parsing ended while an option was waiting on a value, the args are bad
@@ -576,15 +610,20 @@ handle_args:
 	je	init
 	call	bad_args_error
 init:
+	%ifdef DEBUG
 	mov	rax, 0
 	mov	rdi, 1
 	mov	rsi, input_buff
 	mov	rdx, 1
 	syscall
-	mov	rax, 10
+	%endif
+	cmp	byte [has_cells], 0
+	jne	.skip_gen
+	mov	rax, DEFAULT_FILLED_CELLS
 	push	rax
 	call	gen_board
 	pop	rax
+.skip_gen:
 	; Set options
 	mov	eax, dword [new_c_iflag]
 	and	eax, 4294965780; (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON)
@@ -629,7 +668,7 @@ init:
 	printcode enterBold
 	mov	r8, initialState
 .populate_loop:
-	cmp	r8, initialState+80
+	cmp	r8, initialState+81
 	je	.end_populate
 	mov	r9b, byte [r8]
 	inc	r8
@@ -1589,7 +1628,7 @@ update_toolbar:
 	xor	rax, rax
 	mov	al, byte [filledCount]
 	cmp	rax, 10
-	jg	.conv_tens
+	jge	.conv_tens
 	add	rax, 48
 	mov	byte [filled], 48
 	mov	byte [filled+1], al

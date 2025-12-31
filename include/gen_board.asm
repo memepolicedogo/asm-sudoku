@@ -150,7 +150,7 @@ gen_board:
 	mov 	rbx, rdi
 	sub	rbx, initialState
 	; rbx has offset
-	add	rbx, col_0
+	add	rbx, qword [col_0]
 	mov	byte [rbx], al
 	jmp	.good_try
 

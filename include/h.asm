@@ -21,4 +21,5 @@
 	%undef i
 	extern check_input
 	extern gen_board
+	extern filledCount
 %endif
