@@ -708,6 +708,10 @@ main_loop:
 	cmp	rax, 0
 	jl	bad_input_error
 	call	clear_msg
+	cmp	byte [input_buff], 127
+	jne	.not_delete_key
+	mov	byte [input_buff], 48	; delete key should act the same as a 0 input
+.not_delete_key:
 	; Possible inputs:
 	; Number: 1-9
 	; Command: ...
@@ -778,6 +782,7 @@ main_loop:
 	mov	r8b, byte [replaceWith]
 	cmp	r8b, 48
 	jne	.insert_cont
+	dec	byte [filledCount]
 	call	remove_num
 	jmp	main_loop
 .insert_cont:
@@ -1392,6 +1397,8 @@ highlight:;{
 	; Check if highlighting is enabled
 	cmp	byte [do_highlight], 0
 	je	.no_highlight
+	; Check if a number is selected
+
 	; Save cursor
 	save
 	; Save current x and y
