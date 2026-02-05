@@ -394,6 +394,21 @@ section .data
 	jumpLen		equ $-jumpCode
 	;}
 	; TEXT{
+	helpMsg:
+		db "Gameplay",10
+		db "Move around the board with the arrow keys",10
+		db "When in insert mode (", 34, "I", 34,") use numbers 1-9 to fill cells",10
+		db "and 0 or Delete to clear cells",10
+		db "When in notes mode (", 34, "N", 34,") use numbers 1-9 make notes for a cell",10
+		db "At any point use ",34,"S",34," to save your game to a file",10
+		db "At any point use ",34,"Q",34," to exit without saving",10
+		db "Options",10
+		db "-h			Display this help message",10
+		db "-s {filename}	Load a saved game from a given file" ,10
+		db "-n {count}		Generate a random board with the given number of cells",10
+		db "			These boards are completly random and may not have a solution",10
+		db "			The more random cells, the greater the chance the board is impossible",10
+	helpLen		equ $-helpMsg
 	defmsg	toggledHighlight, "Toggled highlighting"
 	defmsg	insertMode, "Entered insert mode"
 	defmsg	notesMode, "Entered notes mode"
@@ -416,16 +431,14 @@ section .data
 		 c_oflag:	dd 0
 		 c_cflag:	dd 0
 		 c_lflag:	dd 0
-		 c_line:	db 0
-		 c_cc:		dq 0, 0, 0
+		 times 44 db 0
 	termio_len	equ $-og_termio
 	new_termio:
 		new_c_iflag:	dd 0
 		new_c_oflag:	dd 0
 		new_c_cflag:	dd 0
 		new_c_lflag:	dd 0
-		new_c_line:	db 0
-		new_c_cc:	dq 0, 0, 0
+		times 44 db 0
 	;}
 	;VARS{
 	filledCount:	db 0
@@ -1271,7 +1284,6 @@ load_ver_2:
 	; This line is equivelent to ...\.sdks regex
 	;test	qword [rsi], 0x8c949b8cd1000000
 	mov	r12, qword [funny]
-.poop_test:
 	test	qword [rsi], r12
 	jnz	.no_strip
 	sub	rsi, 5
