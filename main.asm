@@ -719,7 +719,10 @@ main_loop:
 	mov	rdx, INBUFFSIZE
 	syscall
 	cmp	rax, 0
-	jl	bad_input_error
+	jge	.good_input
+	call	bad_input_error
+	jmp	main_loop
+.good_input:
 	call	clear_msg
 	cmp	byte [input_buff], 127
 	jne	.not_delete_key
@@ -1974,7 +1977,7 @@ init_overwrite_error:
 global bad_input_error
 bad_input_error:
 	printerr bad_input
-	jmp	exit
+	ret
 global term_size_error
 term_size_error:
 	printerr term_size
