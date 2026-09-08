@@ -679,7 +679,7 @@ main_loop:
 	mov	r8b, byte [input_buff]
 	; Check if num
 	cmp	r8b, 48
-	jl	bad_input_error
+	jl	main_loop ; If input is unknown just reset
 	cmp	r8b, 57
 	jg	.check_char
 	; Is num
