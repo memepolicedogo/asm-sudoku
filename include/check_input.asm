@@ -1,4 +1,21 @@
 %include "include/h.asm"
+%ifdef DEBUG
+section .data
+	rowMsg:		db "Starting row check",10
+	rowMsgLen	equ $-rowMsg
+	colMsg:		db "Starting column check",10
+	colMsgLen	equ $-colMsg
+	sqrMsg:		db "Starting square check",10
+	sqrMsgLen	equ $-sqrMsg
+	cellMsg:	db "cmp "
+	cellSrc:	db "0, "
+	cellDst:	db "0",10
+	cellMsgLen	equ $-cellMsg
+	evilLen		equ $-cellSrc
+	locationMsg:	db "Checking at "
+	locationLen	equ $-locationMsg
+section .text
+%endif
 ; int check_input(int x, int y, int val)
 check_input:
 	%define x qword [rbp+16]
@@ -6,13 +23,50 @@ check_input:
 	%define val qword [rbp+32]
 	push	rbp
 	mov	rbp, rsp
-	; x and y from 0-8
-	mov	rsi, row_0
+	%ifdef DEBUG;{
 	mov	rax, x
-	; &row_0+x+(x*8) == &row_%[x]
+	mov	byte [cellSrc], al
+	mov	rax, y
+	mov	byte [cellDst], al
+	add	byte [cellSrc], 48
+	add	byte [cellDst], 48
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, locationMsg
+	mov	rdx, locationLen
+	syscall
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, cellSrc
+	mov	rdx, evilLen
+	syscall
+	%endif;}
+	; x and y from 0-8
+	mov	rax, y
+	; &row_0+y+(y*8) == &row_%[y]
+	mov	rsi, 0
 	add	rsi, rax
 	shl	rax, 3
-	add	rsi, rax	; row_%[x]
+	add	rsi, rax	; offset index
+	shl	rsi, 3		; *8 bc item width is 8 bytes
+	add	rsi, row_0	; row_0+offset bytes
+	%ifdef DEBUG;{
+	push	rcx
+	push	rax
+	push	rdi
+	push	rsi
+	push	rdx
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, rowMsg
+	mov	rdx, rowMsgLen
+	syscall
+	pop	rdx
+	pop	rsi
+	pop	rdi
+	pop	rax
+	pop	rcx
+	%endif;}
 .prep_loop:
 	mov	rdi, val
 	mov	rcx, 0
@@ -20,11 +74,33 @@ check_input:
 	; check values
 	; this loop works for all of the structures so we can reuse it for fun and profit
 .loop:
-	mov	al, byte [rsi+rcx]
+	mov	rax, qword [rsi+rcx]
+	mov	al, byte [rax]
+	%ifdef DEBUG;{
+	mov	byte [cellSrc], al
+	mov	byte [cellDst], dil
+	add	byte [cellSrc], 48
+	add	byte [cellDst], 48
+	push	rcx
+	push	rax
+	push	rdi
+	push	rsi
+	push	rdx
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, cellMsg
+	mov	rdx, cellMsgLen
+	syscall
+	pop	rdx
+	pop	rsi
+	pop	rdi
+	pop	rax
+	pop	rcx
+	%endif;}
 	cmp	al,dil ; value at (x,y) == val
 	je	.bad_input
-	inc	rcx
-	cmp	rcx, 9
+	add	rcx, 8
+	cmp	rcx, 9*8
 	jne	.loop
 	cmp	rsi, col_0
 	jl	.get_col
@@ -32,14 +108,50 @@ check_input:
 	jl	.get_sqr
 	jmp	.good_input
 .get_col:
-	mov	rsi, col_0
+	%ifdef DEBUG;{
+	push	rcx
+	push	rax
+	push	rdi
+	push	rsi
+	push	rdx
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, colMsg
+	mov	rdx, colMsgLen
+	syscall
+	pop	rdx
+	pop	rsi
+	pop	rdi
+	pop	rax
+	pop	rcx
+	%endif;}
+	mov	rsi, 0
 	; Much the same as with row
-	mov	rax, y
+	mov	rax, x
 	add	rsi, rax
 	shl	rax, 3
 	add	rsi, rax	; col_%[x]
+	shl	rsi, 3
+	add	rsi, col_0
 	jmp	.prep_loop
 .get_sqr:
+	%ifdef DEBUG;{
+	push	rcx
+	push	rax
+	push	rdi
+	push	rsi
+	push	rdx
+	mov	rax, 1
+	mov	rdi, 1
+	mov	rsi, sqrMsg
+	mov	rdx, sqrMsgLen
+	syscall
+	pop	rdx
+	pop	rsi
+	pop	rdi
+	pop	rax
+	pop	rcx
+	%endif;}
 	mov	rax, y
 	cmp	rax, 3
 	jl	.y_0
@@ -59,10 +171,10 @@ check_input:
 	mov	rax, x
 	cmp	rax, 3
 	jl	.prep_loop
-	add	rsi, 9
+	add	rsi, 9*8
 	cmp	rax, 6
 	jl	.prep_loop
-	add	rsi, 9
+	add	rsi, 9*8
 	jmp	.prep_loop
 .bad_input:
 	mov	rax, -1

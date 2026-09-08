@@ -9,6 +9,7 @@ DEFAULT ABS
 %define DEFAULT_HIGHLIGHT	1
 %define DEFAULT_CHECK		0
 %define DEFAULT_MODE		'I'
+%define DEFAULT_FILLED_CELLS	20	; how many cells are generated filled by default
 ; Important constants
 %define CURRENT_VERSION	"2"	; Latest save file version
 ; Call constants
@@ -393,6 +394,21 @@ section .data
 	jumpLen		equ $-jumpCode
 	;}
 	; TEXT{
+	helpMsg:
+		db "Gameplay",10
+		db "Move around the board with the arrow keys",10
+		db "When in insert mode (", 34, "I", 34,") use numbers 1-9 to fill cells",10
+		db "and 0 or Delete to clear cells",10
+		db "When in notes mode (", 34, "N", 34,") use numbers 1-9 make notes for a cell",10
+		db "At any point use ",34,"S",34," to save your game to a file",10
+		db "At any point use ",34,"Q",34," to exit without saving",10
+		db "Options",10
+		db "-h			Display this help message",10
+		db "-s {filename}	Load a saved game from a given file" ,10
+		db "-n {count}		Generate a random board with the given number of cells",10
+		db "			These boards are completly random and may not have a solution",10
+		db "			The more random cells, the greater the chance the board is impossible",10
+	helpLen		equ $-helpMsg
 	defmsg	toggledHighlight, "Toggled highlighting"
 	defmsg	insertMode, "Entered insert mode"
 	defmsg	notesMode, "Entered notes mode"
@@ -415,16 +431,14 @@ section .data
 		 c_oflag:	dd 0
 		 c_cflag:	dd 0
 		 c_lflag:	dd 0
-		 c_line:	db 0
-		 c_cc:		dq 0, 0, 0
+		 times 44 db 0
 	termio_len	equ $-og_termio
 	new_termio:
 		new_c_iflag:	dd 0
 		new_c_oflag:	dd 0
 		new_c_cflag:	dd 0
 		new_c_lflag:	dd 0
-		new_c_line:	db 0
-		new_c_cc:	dq 0, 0, 0
+		times 44 db 0
 	;}
 	;VARS{
 	filledCount:	db 0
@@ -434,6 +448,7 @@ section .data
 	do_highlight:	db DEFAULT_HIGHLIGHT
 	do_check:	db DEFAULT_CHECK
 	has_title:	db 0
+	has_cells:	db 0
 	title_len:	dq 0
 	;}
 section .bss
@@ -517,9 +532,36 @@ handle_args:
 	; Load save
 	cmp	r8b, 's'
 	je	.save_file_name
+	cmp	r8b, 'n'
+	je	.gen_cell_count
 	; Implicit deny
 	call	bad_args_error
 	; Handle value accordingly
+.gen_cell_count:
+	xor	r8, r8
+.count_cells_loop:
+	add	r8b, byte [rax] ; first char of the
+	sub	r8b, 48
+	inc	rax
+	cmp	byte [rax], 0
+	je	.exit_cell_count_loop
+	push	rax
+	xor	rax, rax
+	mov	rax, r8
+	mov	rbx, 10
+	mul	rbx
+	mov	r8, rax
+	pop	rax
+	jmp	.count_cells_loop
+.exit_cell_count_loop:
+	push	rax
+	push	r8
+	call	gen_board
+	pop	r8
+	pop	rax
+	mov	byte [has_cells], 1
+	mov	byte [curr_opt], 0
+	jmp	.clear_arg
 .save_file_name:
 	; Current arg should be the name/path of/to a save file
 	; push current arg_v value to the stack since we're using rax for a syscall
@@ -566,9 +608,14 @@ handle_args:
 	; -s: load save file
 	cmp	r8b, 's'
 	je	.load_save
+	cmp	r8b, 'n'
+	je	.gen_custom
 	call	bad_args_error
 .load_save:
 	mov	byte [curr_opt], 's'
+	jmp	.clear_arg
+.gen_custom:
+	mov	byte [curr_opt], 'n'
 	jmp	.clear_arg
 .no_args:
 	; If arg parsing ended while an option was waiting on a value, the args are bad
@@ -576,15 +623,20 @@ handle_args:
 	je	init
 	call	bad_args_error
 init:
+	%ifdef DEBUG
 	mov	rax, 0
 	mov	rdi, 1
 	mov	rsi, input_buff
 	mov	rdx, 1
 	syscall
-	mov	rax, 10
+	%endif
+	cmp	byte [has_cells], 0
+	jne	.skip_gen
+	mov	rax, DEFAULT_FILLED_CELLS
 	push	rax
 	call	gen_board
 	pop	rax
+.skip_gen:
 	; Set options
 	mov	eax, dword [new_c_iflag]
 	and	eax, 4294965780; (IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON)
@@ -629,7 +681,7 @@ init:
 	printcode enterBold
 	mov	r8, initialState
 .populate_loop:
-	cmp	r8, initialState+80
+	cmp	r8, initialState+81
 	je	.end_populate
 	mov	r9b, byte [r8]
 	inc	r8
@@ -669,6 +721,10 @@ main_loop:
 	cmp	rax, 0
 	jl	bad_input_error
 	call	clear_msg
+	cmp	byte [input_buff], 127
+	jne	.not_delete_key
+	mov	byte [input_buff], 48	; delete key should act the same as a 0 input
+.not_delete_key:
 	; Possible inputs:
 	; Number: 1-9
 	; Command: ...
@@ -739,6 +795,7 @@ main_loop:
 	mov	r8b, byte [replaceWith]
 	cmp	r8b, 48
 	jne	.insert_cont
+	dec	byte [filledCount]
 	call	remove_num
 	jmp	main_loop
 .insert_cont:
@@ -1227,7 +1284,6 @@ load_ver_2:
 	; This line is equivelent to ...\.sdks regex
 	;test	qword [rsi], 0x8c949b8cd1000000
 	mov	r12, qword [funny]
-.poop_test:
 	test	qword [rsi], r12
 	jnz	.no_strip
 	sub	rsi, 5
@@ -1353,6 +1409,8 @@ highlight:;{
 	; Check if highlighting is enabled
 	cmp	byte [do_highlight], 0
 	je	.no_highlight
+	; Check if a number is selected
+
 	; Save cursor
 	save
 	; Save current x and y
@@ -1589,7 +1647,7 @@ update_toolbar:
 	xor	rax, rax
 	mov	al, byte [filledCount]
 	cmp	rax, 10
-	jg	.conv_tens
+	jge	.conv_tens
 	add	rax, 48
 	mov	byte [filled], 48
 	mov	byte [filled+1], al
